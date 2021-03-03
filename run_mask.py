@@ -10,94 +10,66 @@ import io
 from torch.utils.data import Dataset
 from PIL import Image, ImageOps
 import torchvision.models as models
-from O365 import Account
 import argparse
-import time
-import atexit
 from scipy.ndimage.filters import gaussian_filter
+import glob
+import shutil
+import wandb
+import torchvision
+import random
+import torchvision.transforms.functional as TF
 
 torch.set_printoptions(precision=4, linewidth=300)
 np.set_printoptions(precision=4, linewidth=300)
 
+
 ################################################ SET UP SEED AND ARGS AND EXIT HANDLER
 
-seed = 99
-
-
-def set_seed(seed):
-    torch.manual_seed(seed)
-    torch.backends.cudnn.deterministic = True
+def set_seed():
+    np.random.seed(0)
+    random.seed(0)
+    torch.manual_seed(0)
+    #torch.set_deterministic(True)
+    torch.cuda.manual_seed(0)
+    torch.cuda.manual_seed_all(0)
+    torch.backends.cudnn.enabled = False
     torch.backends.cudnn.benchmark = False
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
-    np.random.seed(seed)
+    torch.backends.cudnn.deterministic = True
+    os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
 
+
+set_seed()
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--batch_size', type=int, default=1)
-parser.add_argument('--epochs', type=int, default=100)
-parser.add_argument('--lr', type=float, default=0.001)
-parser.add_argument('--conv_thresh', type=float, default=0.01)
+parser.add_argument('--epochs', type=int, default=1)
+parser.add_argument('--lr', type=float, default=0.0001)
+parser.add_argument('--conv_thresh', type=float, default=0)
 parser.add_argument('--save_freq', default=100, type=int)
-parser.add_argument('--subset', default=9999999, type=int)
+parser.add_argument('--subset', default=9999999999, type=int)
 parser.add_argument('--train', default=False, action='store_true')
-parser.add_argument('--load', default=False, action='store_true')
-parser.add_argument('--path', default='./lc_mask.pth')
+parser.add_argument('--load', default='')
 parser.add_argument('--note', default='')
-parser.add_argument('--bin_occ', type=int, default=0)
-parser.add_argument('--preview', default=False, action='store_true')
+parser.add_argument('--model', default='UNet2')
+parser.add_argument('--cls', type=int, default=-1)
+parser.add_argument('--augment', default=False, action='store_true')
 
 args = parser.parse_args()
 
-time_taken = 0
 epoch_loss = 0
-last_batch_loss = 0
 epoch = 0
 
-
-def save_results():
-    results = {'time': time_taken, 'last_batch_loss': last_batch_loss, 'epoch_loss': epoch_loss, 'epoch': epoch}
-    results = {**results, **vars(args)}
-    print(results)
-    results = pd.DataFrame(results, index=[0])
-    results.to_csv('results.csv', index=False, mode='a+', header=True)
-
-
-atexit.register(save_results)
-
-################################################ SET UP ONEDRIVE ACCESS
-
-
-client_secret = 'uzTrTxL5HxBkD=n]PkBg9SQf4N?Lmn5='
-
-client_id = '291b2960-9a18-4859-8315-6b099b9ee87a'
-
-scopes = ['basic', 'onedrive_all']
-
-credentials = (client_id, client_secret)
-
-account = Account(credentials)
-
-
-def authenticate():
-    print('Authenticating...')
-    if not account.is_authenticated:
-        account.authenticate(scopes=scopes)
-    print('Authenticated...')
-
-
-authenticate()
-
-storage = account.storage()
-
-my_drive = storage.get_default_drive()
-root_folder = my_drive.get_root_folder()
-
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-print('Using device: ', device)
+
+wandb.init(project="immune-seg", entity="jessicamarycooper", config=args)
+args = wandb.config
+
+params_id = wandb.run.name
+print(params_id)
+wandb.run.save()
 
 
-################################################ IMG HELPERS
+################################################ HELPERS
 
 
 def show_im(im):
@@ -111,11 +83,14 @@ def show_im(im):
 
 def save_im(im, name='image'):
     d = im.shape[-1]
-    fig, ax = plt.subplots()
-    im = im.reshape(-1, d)
-    plt.imshow(im, cmap='gray')
-    plt.savefig('lc_imgs/' + name + '.png')
-    plt.close(fig)
+    im = im.reshape(-1, d, d)
+
+    for cls in range(im.shape[0]):
+        fig, ax = plt.subplots()
+        img = im[cls]
+        plt.imshow(img, cmap='gray')
+        plt.savefig('lc_imgs/' + name + '_' + str(cls) + '.png')
+        plt.close(fig)
 
 
 def standardise(img):
@@ -124,91 +99,100 @@ def standardise(img):
     return img
 
 
-def normalise(img):
-    img = (img - np.min(img)) / max(np.max(img) - np.min(img), 0.0001)
+def normalise(x):
+    x = (x - x.min()) / max(x.max() - x.min(), 0.0001)
+    return x
 
-    return img
 
 def whiten(img):
     img = img - img.mean()
     cov = np.dot(img.T, img)
     d, vec = np.linalg.eigh(cov)
-    diag = np.diag(1 / np.sqrt(d+0.0001))
+    diag = np.diag(1 / np.sqrt(d + 0.0001))
     w = np.dot(np.dot(vec, diag), vec.T)
 
     return np.dot(img, w)
 
 
+def scores(output, target):
+    output = torch.round(output)
+    conf = output / target
+    tp, fp, tn, fn = torch.sum(conf == 1).item(), torch.sum(conf == float('inf')).item(), torch.sum(torch.isnan(conf)).item(), torch.sum(conf == 0).item()
+
+    if (tp + fp) == 0:
+        precision = 0
+    else:
+        precision = tp / (tp + fp)
+
+    if (tp + fn) == 0:
+        recall = 0
+    else:
+        recall = tp / (tp + fn)
+
+    f1 = 2 * ((precision * recall) / max(precision + recall, 0.0001))
+
+    return np.array([precision, recall, f1])
+
+
+def gentle_scores(output, target):
+    tp = torch.sum(target * output)
+    tn = torch.sum((1 - target) * (1 - output))
+    fp = torch.sum((1 - target) * output)
+    fn = torch.sum(target * (1 - output))
+
+    p = tp / (tp + fp + 0.0001)
+    r = tp / (tp + fn + 0.0001)
+
+    f1 = 2 * p * r / (p + r + 0.0001)
+    f1 = torch.where(torch.isnan(f1), torch.zeros_like(f1), f1)
+
+    return torch.Tensor([p, r, torch.mean(f1)])
+
+
+def f1_loss(output, target):
+    tp = torch.sum(target * output)
+    tn = torch.sum((1 - target) * (1 - output))
+    fp = torch.sum((1 - target) * output)
+    fn = torch.sum(target * (1 - output))
+
+    p = tp / (tp + fp + 0.0001)
+    r = tp / (tp + fn + 0.0001)
+
+    f1 = 2 * p * r / (p + r + 0.0001)
+    f1 = torch.where(torch.isnan(f1), torch.zeros_like(f1), f1)
+
+    return 1 - torch.mean(f1)
+
+
 ################################################ SETTING UP DATASET
 
 
-if not os.path.exists('od_sample_paths.csv'):
+if not os.path.exists('sample_paths.csv'):
     print('Building data paths...')
-    data = my_drive.get_item_by_path('/lc_exported_tiles/Preliminary immune class').get_items()
-    samples = pd.DataFrame(columns=['ID', 'Img', 'Mask'])
-    keys = pd.DataFrame(columns=['ID', 'Stroma', 'Immune cells', 'Tumor'])
-    for d in data:
-        print(d.name)
-        row = {}
-        k_id = d.name.split('_')[0]
-        if ').png' in d.name:
-            row['ID'] = k_id
-            row['Img'] = d.name
-            row['Mask'] = os.path.splitext(d.name)[0] + '_mask.png'
-            samples = samples.append(row, ignore_index=True)
-        if 'key' in d.name:
-            print('KF', end=' ')
-            d.download('', 'key.txt')
-            with open('key.txt', 'r') as key:
-                key_row = {}
-                key_row['ID'] = k_id
-                key = key.read()
-                lines = key.split('\n')
-                for l in lines:
-                    sp = l.split('\t')
-                    if len(sp) == 2:
-                        key_row[sp[0]] = int(sp[1])
-                keys = keys.append(key_row, ignore_index=True)
 
-    keys.to_csv('sample_keys.csv')
-    samples = pd.merge(samples, keys, on='ID')
-    samples.to_csv('od_sample_paths.csv')
-    print('\n',len(samples))
+    data = glob.glob("data/new_exported_tiles/*/*")
+
+    samples = {}
+    for d in data:
+        dn = d.split(']')[0] + ']'
+        sample = samples[dn] if dn in samples else {}
+        if '-labelled' in d:
+            sample['Mask'] = d
+        else:
+            sample['Img'] = d
+        samples[dn] = sample
+
+    samples = pd.DataFrame.from_dict(samples, orient='index')
+    samples = samples.dropna()
+    samples.to_csv('sample_paths.csv', index=False)
+    print('\n', len(samples))
     print('DONE!')
 
 
-def prep1(img):
-    img = normalise(img)
-    mask = img.copy()
-    mask[mask > 0.2] = 0
-    mask[mask > 0] = 1
-    mask = gaussian_filter(mask, sigma=0.2)
-    mask[mask < 1] = 0.1
-    mask = gaussian_filter(mask, sigma=1)
-    img *= mask
-    return
-
-
-def prep(img):
-    img = normalise(img)
-    mask = img.copy()
-    mask[mask > 0.2] = 0
-    mask[mask > 0] = 1
-    mask = gaussian_filter(mask, sigma=0.2)
-    mask[mask < 1] = 0
-    del_mask = mask.copy()
-    mask = gaussian_filter(mask, sigma=1)
-    img *= mask
-
-    return img, del_mask
-
-
-class lc_seg_tiles(Dataset):
+class lc_seg_tiles_dir(Dataset):
 
     def __init__(self, subset=-1):
-        self.cell_type = 'Immune cells'
-        self.samples = pd.read_csv('od_sample_paths.csv')[:subset]
-
+        self.samples = pd.read_csv('sample_paths.csv')[:subset]
 
     def __len__(self):
         return len(self.samples)
@@ -216,64 +200,280 @@ class lc_seg_tiles(Dataset):
     def __getitem__(self, index):
         s = self.samples.iloc[index]
         dim = 256
-        name = s['Img']
-        name = name.split('_')[0] + '_' + name.split(',')[1] + '_' + name.split(',')[2]
-        img = my_drive.get_item_by_path('/lc_exported_tiles/exported_tiles/' + s['Img'])
-        mask = my_drive.get_item_by_path('/lc_exported_tiles/exported_tiles/' + s['Mask'])
 
-        img_buffer = io.BytesIO()
-        mask_buffer = io.BytesIO()
+        name = s['Img'].split('.')[0]
 
-        img = img.download(output=img_buffer)
-        mask = mask.download(output=mask_buffer)
-
-        img = np.array(Image.open(img_buffer))[:dim, :dim]
-
-        img, del_mask = prep(img)
-
+        img = np.array(Image.open(s['Img']))[:dim, :dim]
         img = np.pad(img, ((0, dim - img.shape[0]), (0, dim - img.shape[1])), 'minimum')
 
-        mask = np.array(Image.open(mask_buffer))[:dim, :dim]
-
+        mask = np.array(Image.open(s['Mask']))[:dim, :dim]
         mask = np.pad(mask, ((0, dim - mask.shape[0]), (0, dim - mask.shape[1])), 'minimum')
 
-        img_buffer.close()
-        mask_buffer.close()
+        return np.expand_dims(img.astype(np.float32), 0), np.expand_dims(mask.astype(np.float32), 0), name
 
-        mask_none = mask.copy()
-        mask_none[mask_none > 0] = 1
-        img*= mask_none
-        cell_key = s[self.cell_type]
-        mask[mask != cell_key] = 0
-        mask[mask == cell_key] = 1
-        mask *= del_mask.astype('uint8')
 
-        count = np.sum(mask)
+class lc_seg_tiles_bc(Dataset):
 
-        return np.expand_dims(img.astype(np.float32), 0), np.expand_dims(count.astype(np.float32), 0), np.expand_dims(mask.astype(np.float32), 0), name
+    def __init__(self, subset=-1):
+        self.samples = pd.read_csv('sample_paths.csv')[:subset]
+
+    def __len__(self):
+        return len(self.samples)
+
+    def __getitem__(self, index):
+        s = self.samples.iloc[index]
+        dim = 256
+
+        name = s['Img'].split('.')[0]
+
+        img = np.array(Image.open(s['Img']))[:dim, :dim]
+        img = np.pad(img, ((0, dim - img.shape[0]), (0, dim - img.shape[1])), 'minimum')
+
+        mask = np.array(Image.open(s['Mask']))[:dim, :dim]
+        mask = np.pad(mask, ((0, dim - mask.shape[0]), (0, dim - mask.shape[1])), 'minimum')
+
+        if args.cls > 0:
+            mask[mask != args.cls] = 0
+        mask[mask > 0] = 1
+
+        img, mask = torch.Tensor(img.astype(np.float32)).unsqueeze(0), torch.Tensor(mask.astype(np.float32)).unsqueeze(0)
+
+        if args.augment:
+            angle = random.randint(-180, 180)
+            img = TF.rotate(img, angle)
+            mask = TF.rotate(mask, angle)
+
+            if random.choice([0, 1]) == 1:
+                img = TF.hflip(img)
+                mask = TF.hflip(mask)
+
+            if random.choice([0, 1]) == 1:
+                img = TF.vflip(img)
+                mask = TF.vflip(mask)
+
+        return img, mask, name
+
+
+class lc_seg_tiles_mc(Dataset):
+
+    def __init__(self, subset=-1):
+        self.samples = pd.read_csv('sample_paths.csv')[:subset]
+
+    def __len__(self):
+        return len(self.samples)
+
+    def __getitem__(self, index):
+        s = self.samples.iloc[index]
+        dim = 256
+
+        name = s['Img'].split('.')[0]
+
+        img = np.array(Image.open(s['Img']))[:dim, :dim]
+        img = np.pad(img, ((0, dim - img.shape[0]), (0, dim - img.shape[1])), 'minimum')
+
+        mask = np.array(Image.open(s['Mask']))[:dim, :dim]
+        mask = np.pad(mask, ((0, dim - mask.shape[0]), (0, dim - mask.shape[1])), 'minimum')
+        # oh = F.one_hot(torch.Tensor(mask).to(torch.int64), num_classes=5)
+
+        return np.expand_dims(img.astype(np.float32), 0), mask.astype(np.long), name
 
 
 ################################################ MODELS
 
 
-class SimpleConv(nn.Module):
+class SegNet(nn.Module):
+    """SegNet: A Deep Convolutional Encoder-Decoder Architecture for
+    Image Segmentation. https://arxiv.org/abs/1511.00561
+    See https://github.com/alexgkendall/SegNet-Tutorial for original models.
+    Args:
+        num_classes (int): number of classes to segment
+        n_init_features (int): number of input features in the fist convolution
+        drop_rate (float): dropout rate of each encoder/decoder module
+        filter_config (list of 5 ints): number of output features at each level
+    """
+
+    def __init__(self, num_classes=1, n_init_features=1, drop_rate=0.5,
+                 filter_config=(64, 128, 256, 512, 512)):
+        super(SegNet, self).__init__()
+
+        self.encoders = nn.ModuleList()
+        self.decoders = nn.ModuleList()
+        # setup number of conv-bn-relu blocks per module and number of filters
+        encoder_n_layers = (2, 2, 3, 3, 3)
+        encoder_filter_config = (n_init_features,) + filter_config
+        decoder_n_layers = (3, 3, 3, 2, 1)
+        decoder_filter_config = filter_config[::-1] + (filter_config[0],)
+
+        for i in range(0, 5):
+            # encoder architecture
+            self.encoders.append(_Encoder(encoder_filter_config[i],
+                                          encoder_filter_config[i + 1],
+                                          encoder_n_layers[i], drop_rate))
+
+            # decoder architecture
+            self.decoders.append(_Decoder(decoder_filter_config[i],
+                                          decoder_filter_config[i + 1],
+                                          decoder_n_layers[i], drop_rate))
+
+        # final classifier (equivalent to a fully connected layer)
+        self.classifier = nn.Conv2d(filter_config[0], num_classes, 3, 1, 1)
+
+    def forward(self, x):
+        indices = []
+        unpool_sizes = []
+        feat = x
+
+        # encoder path, keep track of pooling indices and features size
+        for i in range(0, 5):
+            (feat, ind), size = self.encoders[i](feat)
+            indices.append(ind)
+            unpool_sizes.append(size)
+
+        # decoder path, upsampling with corresponding indices and size
+        for i in range(0, 5):
+            feat = self.decoders[i](feat, indices[4 - i], unpool_sizes[4 - i])
+
+        return self.classifier(feat)
+
+
+class _Encoder(nn.Module):
+
+    def __init__(self, n_in_feat, n_out_feat, n_blocks=2, drop_rate=0.5):
+        """Encoder layer follows VGG rules + keeps pooling indices
+        Args:
+            n_in_feat (int): number of input features
+            n_out_feat (int): number of output features
+            n_blocks (int): number of conv-batch-relu block inside the encoder
+            drop_rate (float): dropout rate to use
+        """
+        super(_Encoder, self).__init__()
+
+        layers = [nn.Conv2d(n_in_feat, n_out_feat, 3, 1, 1),
+                  nn.BatchNorm2d(n_out_feat),
+                  nn.ReLU(inplace=True)]
+
+        if n_blocks > 1:
+            layers += [nn.Conv2d(n_out_feat, n_out_feat, 3, 1, 1),
+                       nn.BatchNorm2d(n_out_feat),
+                       nn.ReLU(inplace=True)]
+            if n_blocks == 3:
+                layers += [nn.Dropout(drop_rate)]
+
+        self.features = nn.Sequential(*layers)
+
+    def forward(self, x):
+        output = self.features(x)
+        return F.max_pool2d(output, 2, 2, return_indices=True), output.size()
+
+
+class _Decoder(nn.Module):
+    """Decoder layer decodes the features by unpooling with respect to
+    the pooling indices of the corresponding decoder part.
+    Args:
+        n_in_feat (int): number of input features
+        n_out_feat (int): number of output features
+        n_blocks (int): number of conv-batch-relu block inside the decoder
+        drop_rate (float): dropout rate to use
+    """
+
+    def __init__(self, n_in_feat, n_out_feat, n_blocks=2, drop_rate=0.5):
+        super(_Decoder, self).__init__()
+
+        layers = [nn.Conv2d(n_in_feat, n_in_feat, 3, 1, 1),
+                  nn.BatchNorm2d(n_in_feat),
+                  nn.ReLU(inplace=True)]
+
+        if n_blocks > 1:
+            layers += [nn.Conv2d(n_in_feat, n_out_feat, 3, 1, 1),
+                       nn.BatchNorm2d(n_out_feat),
+                       nn.ReLU(inplace=True)]
+            if n_blocks == 3:
+                layers += [nn.Dropout(drop_rate)]
+
+        self.features = nn.Sequential(*layers)
+
+    def forward(self, x, indices, size):
+        unpooled = F.max_unpool2d(x, indices, 2, 2, 0, size)
+        return self.features(unpooled)
+
+
+class fcn_resnet50(nn.Module):
 
     def __init__(self):
         super().__init__()
-        self.conv1 = nn.Conv2d(1, 10, kernel_size=5)
-        self.conv2 = nn.Conv2d(10, 20, kernel_size=5)
-        self.fc1 = nn.Linear(320, 50)
-        self.fc2 = nn.Linear(50, 10)
+        self.fcn = models.segmentation.fcn_resnet50(pretrained=False, progress=True, num_classes=1, aux_loss=None)
+        self.ch_conv = nn.Conv2d(1, 3, 1)
 
     def forward(self, x):
-        x = F.relu(F.max_pool2d(self.conv1(x), 2))
-        x = F.relu(F.max_pool2d(self.conv2(x), 2))
-
-        x = x.view(-1, 320)
-        x = F.relu(self.fc1(x))
-        x = self.fc2(x)
+        x = self.ch_conv(x)
+        x = self.fcn(x)
         return x
 
+
+class fcn_resnet101(nn.Module):
+
+    def __init__(self):
+        super().__init__()
+        self.fcn = models.segmentation.fcn_resnet101(pretrained=False, progress=True, num_classes=1, aux_loss=None)
+        self.ch_conv = nn.Conv2d(1, 3, 1)
+
+    def forward(self, x):
+        x = self.ch_conv(x)
+        x = self.fcn(x)
+        return x
+
+
+"UNet implementation from: https://github.com/usuyama/pytorch-unet/blob/master/pytorch_unet.py"
+
+
+def double_conv(in_channels, out_channels):
+    return nn.Sequential(
+            nn.Conv2d(in_channels, out_channels, 3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(out_channels, out_channels, 3, padding=1),
+            nn.ReLU(inplace=True)
+            )
+
+
+class UNet1(nn.Module):
+
+    def __init__(self, n_class=1):
+        super().__init__()
+        self.ch_conv = nn.Conv2d(1, 3, 1)
+        self.dconv_down1 = double_conv(3, 64)
+        self.dconv_down2 = double_conv(64, 128)
+        self.dconv_down3 = double_conv(128, 256)
+        self.dconv_down4 = double_conv(256, 512)
+
+        self.maxpool = nn.MaxPool2d(2)
+        self.upsample = nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True)
+
+        self.dconv_up3 = double_conv(256 + 512, 256)
+        self.dconv_up2 = double_conv(128 + 256, 128)
+        self.dconv_up1 = double_conv(128 + 64, 64)
+
+        self.conv_last = nn.Conv2d(64, n_class, 1)
+
+    def forward(self, x):
+        x = self.ch_conv(x)
+        conv1 = self.dconv_down1(x)
+        x = self.maxpool(conv1)
+        conv2 = self.dconv_down2(x)
+        x = self.maxpool(conv2)
+        conv3 = self.dconv_down3(x)
+        x = self.maxpool(conv3)
+        x = self.dconv_down4(x)
+        x = self.upsample(x)
+        x = torch.cat([x, conv3], dim=1)
+        x = self.dconv_up3(x)
+        x = self.upsample(x)
+        x = torch.cat([x, conv2], dim=1)
+        x = self.dconv_up2(x)
+        x = self.upsample(x)
+        x = torch.cat([x, conv1], dim=1)
+        x = self.dconv_up1(x)
+        out = self.conv_last(x)
+        return out
 
 
 """ Parts of the U-Net model 
@@ -357,10 +557,10 @@ class OutConv(nn.Module):
 """ Full assembly of the parts to form the complete network """
 
 
-class UNet(nn.Module):
+class UNet2(nn.Module):
 
-    def __init__(self, n_channels, n_classes, bilinear=True):
-        super(UNet, self).__init__()
+    def __init__(self, n_channels=1, n_classes=1, bilinear=True):
+        super(UNet2, self).__init__()
         self.n_channels = n_channels
         self.n_classes = n_classes
         self.bilinear = bilinear
@@ -391,135 +591,83 @@ class UNet(nn.Module):
         return logits
 
 
-class ResNet(nn.Module):
-
-    def __init__(self, num_outputs=1):
-        super().__init__()
-        self.rn = models.resnet50(num_classes=num_outputs)
-        self.conv1 = nn.Conv2d(1, 3, 1)
-
-    def forward(self, x):
-        x = self.conv1(x)
-        x = self.rn(x)
-        return x
-
-
-class fcn_resnet101(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.fcn = models.segmentation.fcn_resnet101(pretrained=False, progress=True, num_classes=1, aux_loss=None)
-        self.conv1 = nn.Conv2d(1,3,1)
-
-    def forward(self, x):
-        x = self.conv1(x)
-        x = self.fcn(x)
-        return x
-
-
-class SimpleFConv(nn.Module):
-
-    def __init__(self, num_outputs=1):
-        super().__init__()
-        self.conv1 = nn.Conv2d(1, 24, kernel_size=5, padding=2)
-        self.conv2 = nn.Conv2d(24, 48, kernel_size=5, padding=2)
-        self.conv3 = nn.Conv2d(48, 96, kernel_size=5, padding=2)
-        self.conv4 = nn.Conv2d(96, 96, kernel_size=5, padding=2)
-
-    def forward(self, x):
-        x = F.relu(self.conv1(x))
-        x = F.relu(self.conv2(x))
-        x = F.relu(self.conv3(x))
-        x = F.relu(self.conv4(x))
-        x = torch.mean(x, dim=1, keepdim=True)
-        return x
-
 ################################################ TRAINING
 
 
 def run_epochs(net, dataloader, criterion, optimizer, num_epochs, path, save_freq=100, train=True):
-    global time_taken
-    global epoch_loss
-    global epoch
-    global last_batch_loss
-    start_time = time.time()
+    mode = 'train' if train else 'val'
+    results = {}
     if not train:
         net.eval()
 
     for epoch in range(num_epochs):
         sum_epoch_loss = 0.0
-        running_loss = 0.0
-        for i, data in enumerate(dataloader):
-            inputs, labels, masks, name = data
+        sum_epoch_scores = torch.zeros(3)
 
+        for i, data in enumerate(dataloader):
+            inputs, masks, name = data
             inputs = inputs.to(device)
-            # labels = labels.to(device)
             masks = masks.to(device)
 
-            targets = masks
+            if 'fcn_resnet' in args.model:
+                outputs = torch.sigmoid(net(inputs)['out'])
+            else:
+                outputs = torch.sigmoid(net(inputs))
 
-            outputs = net(inputs)['out']
+            # Balancing loss (for binary task only!)
+            # pos_cov = torch.sum(masks)/torch.numel(masks)
+            # pos_weight = (1 - pos_cov) / pos_cov
 
-            loss = criterion(outputs, targets)
+            loss = criterion(outputs, masks)#, pos_weight=pos_weight)
+            batch_scores = scores(outputs, masks)
 
-            print('Epoch: {} Batch: {}/{} Batch Loss {}'.format(epoch, i, len(dataloader), loss.item()))
+            print('({}) Epoch: {}/{} Batch: {}/{} Batch Loss {}'.format(mode, epoch, num_epochs, i, len(dataloader), loss.item()))
+            print(dict(zip(['prec', 'rec', 'f1'], batch_scores)))
 
-            if True in torch.isnan(loss):
-                print('NaaaaaaaaaaN!')
-                return net, epoch_loss
+            sum_epoch_loss += loss.item()
+            sum_epoch_scores += batch_scores
+            epoch_loss = sum_epoch_loss / (i + 1)
+            epoch_scores = sum_epoch_scores / (i + 1)
+
+            results = {'{}/batch_loss'.format(mode): loss.item(), '{}/epoch_loss'.format(mode): epoch_loss}
+            results.update(dict(zip(['{}/epoch_'.format(mode) + s for s in ['prec', 'rec', 'f1']], epoch_scores)))
+            results.update(dict(zip(['{}/batch_'.format(mode) + s for s in ['prec', 'rec', 'f1']], batch_scores)))
+
             if train:
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
 
-            time_taken = np.round(time.time() - start_time)
+            if i % save_freq == 0:
+                results["{}/inputs".format(mode)] = [wandb.Image(i) for i in inputs]
+                results["{}/outputs".format(mode)] = [wandb.Image(i) for i in outputs]
+                results["{}/masks".format(mode)] = [wandb.Image(i) for i in masks]
 
-            running_loss += loss.item()
-            sum_epoch_loss += loss.item()
-            epoch_loss = sum_epoch_loss / (i+1)
+            wandb.log(results)
 
-            mode = 'training' if train else 'validating'
+        print('Completed epoch {}. Avg epoch loss: {}'.format(epoch, sum_epoch_loss / (i + 1)))
 
-            if args.preview:
-                im = inputs[0].detach().cpu().numpy()
-                o = outputs[0].detach().cpu().numpy()
-                m = masks[0].detach().cpu().numpy()
-                save_im(im, 'input')
-                save_im(m, 'mask')
-                save_im(o, 'output')
-
-
-            if (i > 0) and (i % save_freq == 0):
-                print('\n({}) Epoch: {} Batch: {}/{} Avg Loss over last {} batches: {}\n'.format(mode, epoch, i, len(dataloader), save_freq, running_loss / save_freq))
-                running_loss = 0.0
-                print('Saving images...')
-                im = inputs[0].detach().cpu().numpy()
-                o = outputs[0].detach().cpu().numpy()
-                m = masks[0].detach().cpu().numpy()
-                save_im(im, '{}_i'.format(name[0]))
-                save_im(m, '{}_m'.format(name[0]))
-                save_im(o, '{}_o_{}_{}'.format(name[0], epoch, i))
-                if train:
-                    torch.save(net.state_dict(), path)
-
-
-        print('Completed epoch {}. Avg epoch loss: {}'.format(epoch, sum_epoch_loss/(i+1)))
         if train:
-            torch.save(net.state_dict(), args.path)
+            print('Saving model...')
+            torch.save(net.state_dict(), path)
+            print('Evaluating network...')
+            with torch.no_grad():
+                _ = run_epochs(net, eval_loader, criterion, None, 1, None, train=False, save_freq=args.save_freq)
 
-        if epoch_loss < args.conv_thresh:
-            return net
-
-    print('Finished Training')
     return net
 
 
-dataset = lc_seg_tiles(args.subset)
+dataset = lc_seg_tiles_bc(args.subset)
+net = eval(args.model)()
+criterion = f1_loss
 
-net = fcn_resnet101()
-set_seed(seed)
+"""
+# multiclass segmentation
+dataset = lc_seg_tiles_mc(args.subset)
+net = eval(args.model)(n_channels=1, n_classes=5)
+criterion = nn.CrossEntropyLoss()
 
-num_params = sum(p.numel() for p in net.parameters() if p.requires_grad)
-print("Model has {} parameters".format(num_params))
+"""
 
 if torch.cuda.device_count() > 1:
     print("Using", torch.cuda.device_count(), "GPUs.")
@@ -527,10 +675,10 @@ if torch.cuda.device_count() > 1:
 
 net.to(device)
 num_epochs = args.epochs
-criterion = nn.BCEWithLogitsLoss()
 optimizer = optim.Adam(net.parameters(), lr=args.lr)
+wandb.watch(net)
 
-train_size = int(0.7 * len(dataset))
+train_size = int(0.8 * len(dataset))
 val_test_size = len(dataset) - train_size
 val_size = int(0.5 * val_test_size)
 test_size = val_test_size - val_size
@@ -538,20 +686,18 @@ test_size = val_test_size - val_size
 train_data, val_test_data = torch.utils.data.random_split(dataset, [train_size, val_test_size])
 val_data, test_data = torch.utils.data.random_split(val_test_data, [val_size, test_size])
 
-train_loader = torch.utils.data.DataLoader(train_data, batch_size=args.batch_size, shuffle=True)
-eval_loader = torch.utils.data.DataLoader(val_data, batch_size=args.batch_size, shuffle=True)
+train_loader = torch.utils.data.DataLoader(train_data, batch_size=args.batch_size, shuffle=True, worker_init_fn=np.random.seed(0), num_workers=0)
+eval_loader = torch.utils.data.DataLoader(val_data, batch_size=1, shuffle=True, worker_init_fn=np.random.seed(0), num_workers=0)
 
-if args.load:
-    net.load_state_dict(torch.load(args.path, map_location=torch.device(device)))
+print('{} training samples, {} validation samples...'.format(train_size, val_size))
+
+if args.load is not '':
+    net.load_state_dict(torch.load('params/' + args.load + ".pth", map_location=torch.device(device)))
 
 if args.train:
     print('Training network...')
-    net = run_epochs(net, train_loader, criterion, optimizer, num_epochs, args.path, save_freq=min(train_size, args.save_freq))
-
-
-################################################ VALIDATION
+    _ = run_epochs(net, train_loader, criterion, optimizer, num_epochs, 'params/' + params_id + '.pth', save_freq=min(train_size, args.save_freq))
 
 else:
-    print('Evaluating network...')
-    net.load_state_dict(torch.load(args.path))
-    _ = run_epochs(net, eval_loader, criterion, None, 1, None, train=False, save_freq=1)
+    with torch.no_grad():
+        _ = run_epochs(net, eval_loader, criterion, None, 1, None, train=False, save_freq=args.save_freq)
