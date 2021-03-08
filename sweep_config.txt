@@ -1,0 +1,34 @@
+program: run_mask.py
+command:
+  - ${env}
+  - python3
+  - run_mask.py
+  - --train
+method: grid
+metric:
+  goal: maximize
+  name: val/epoch_f1
+parameters:
+  batch_size:
+    values:
+      - 32
+    distribution: categorical
+  model:
+    values:
+      - smp.Unet
+      - smp.UnetPlusPlus
+      - smp.MAnet
+      - smp.Linknet
+      - smp.FPN
+      - smp.PSPNet
+      - smp.PAN
+      - smp.DeepLabV3
+      - smp.DeepLabV3Plus
+    distribution: categorical
+  lr:
+    values:
+      - 0.001
+      - 0.0001
+      - 0.00001
+      - 0.000001
+    distribution: categorical
