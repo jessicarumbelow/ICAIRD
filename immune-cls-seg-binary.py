@@ -267,20 +267,18 @@ def run_epochs(net, dataloader, cls_criterion, seg_criterion, optimizer, num_epo
             output_masks, output_labels = net(inputs)
             output_masks, output_labels = torch.sigmoid(output_masks), torch.sigmoid(output_labels)
 
-            target_masks = F.interpolate(target_masks, (32, 32))
-
             classifier_loss = cls_criterion(output_labels, target_labels)
             segmentation_loss = seg_criterion(output_masks, target_masks)
 
+            if args.classifier:
+                loss = classifier_loss
+            elif args.dual:
+                loss = classifier_loss + segmentation_loss
+            else:
+                loss = segmentation_loss
+
             if train:
                 optimizer.zero_grad()
-                if args.classifier:
-                    loss = classifier_loss
-                elif args.dual:
-                    loss = classifier_loss + segmentation_loss
-                else:
-                    loss = segmentation_loss
-
                 loss.backward()
                 optimizer.step()
 
@@ -321,7 +319,7 @@ def run_epochs(net, dataloader, cls_criterion, seg_criterion, optimizer, num_epo
 
 dataset = lc_seg_tiles_bc()
 
-net = eval(args.model)(args.encoder, in_channels=1, classes=1, upsampling=1,aux_params=dict(
+net = eval(args.model)(args.encoder, in_channels=1, classes=1,aux_params=dict(
     pooling='avg',             # one of 'avg', 'max'
     dropout=0.0,               # dropout ratio, default is None
     activation=None,      # activation function, default is None
