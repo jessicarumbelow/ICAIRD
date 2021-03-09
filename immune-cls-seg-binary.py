@@ -54,11 +54,14 @@ parser.add_argument('--load', default='')
 parser.add_argument('--note', default='')
 parser.add_argument('--model', default='smp.PSPNet')
 parser.add_argument('--encoder', default='resnet34')
-parser.add_argument('--lf', default='f1_loss')
+parser.add_argument('--cls_lf', default='nn.BCELoss()')
+parser.add_argument('--seg_lf', default='f1_loss')
 parser.add_argument('--cls', type=int, default=-1)
 parser.add_argument('--slides', default=None)
 parser.add_argument('--augment', default=False, action='store_true')
-parser.add_argument('--experimental', default=False, action='store_true')
+parser.add_argument('--classifier', default=False, action='store_true')
+parser.add_argument('--downsample', default=False, action='store_true')
+parser.add_argument('--dual', default=False, action='store_true')
 
 args = parser.parse_args()
 
@@ -66,43 +69,14 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # os.environ["WANDB_SILENT"] = "true"
 
-proj = "immune-seg-exp" if args.experimental else "immune-seg"
+proj = "immune-cls-seg"
 
 wandb.init(project=proj, entity="jessicamarycooper", config=args)
 args = wandb.config
 params_id = wandb.run.name
 print(params_id, args)
 
-num_classes = 5
 dim = 256
-
-
-################################################ MODELS
-
-class resnet50(nn.Module):
-
-    def __init__(self, encoder, in_channels, classes):
-        super().__init__()
-        self.fcn = models.resnet50(num_classes=num_classes)
-        self.ch_conv = nn.Conv2d(1, 3, 1)
-
-    def forward(self, x):
-        x = self.ch_conv(x)
-        x = self.fcn(x)
-        return x
-
-
-class resnet101(nn.Module):
-
-    def __init__(self, encoder, in_channels, classes):
-        super().__init__()
-        self.fcn = models.resnet101(num_classes=num_classes)
-        self.ch_conv = nn.Conv2d(1, 3, 1)
-
-    def forward(self, x):
-        x = self.ch_conv(x)
-        x = self.fcn(x)
-        return x
 
 
 ################################################ HELPERS
@@ -220,7 +194,7 @@ class lc_seg_tiles_bc(Dataset):
         if args.slides is not None:
             self.samples = self.samples[self.samples['Slide'].isin(args.slides.split('_'))]
 
-        if args.cls > 0:
+        if args.cls > 0 and not (args.dual or args.classifier):
             self.samples = self.samples[self.samples['Classes'].str.contains(str(args.cls))]
 
         if args.augment:
@@ -246,154 +220,116 @@ class lc_seg_tiles_bc(Dataset):
         img = np.array(Image.open(s['Img']))[:dim, :dim]
         img = np.pad(img, ((0, dim - img.shape[0]), (0, dim - img.shape[1])), 'minimum')
 
-        mask = np.array(Image.open(s['Mask']))[:dim, :dim]
-        mask = np.pad(mask, ((0, dim - mask.shape[0]), (0, dim - mask.shape[1])), 'minimum')
+        target = np.array(Image.open(s['Mask']))[:dim, :dim]
+        target = np.pad(target, ((0, dim - target.shape[0]), (0, dim - target.shape[1])), 'minimum')
 
         if args.cls > 0:
-            mask[mask != args.cls] = 0
-        mask[mask > 0] = 1
+            target[target != args.cls] = 0
+        target[target > 0] = 1
 
         img = normalise(img)
-        img, mask = torch.Tensor(img.astype(np.float32)).unsqueeze(0), torch.Tensor(mask.astype(np.float32)).unsqueeze(0)
+        img, target = torch.Tensor(img.astype(np.float32)).unsqueeze(0), torch.Tensor(target.astype(np.float32)).unsqueeze(0)
 
         if args.augment:
             hflip, vflip, angle = s['Aug']
             img = TF.rotate(img, angle)
-            mask = TF.rotate(mask, angle)
+            target = TF.rotate(target, angle)
 
             if hflip == 1:
                 img = TF.hflip(img)
-                mask = TF.hflip(mask)
+                target = TF.hflip(target)
 
             if vflip == 1:
                 img = TF.vflip(img)
-                mask = TF.vflip(mask)
+                target = TF.vflip(target)
 
-        return img, mask
+        label = torch.max(target).unsqueeze(0)
 
+        return img, target, label
 
-class experimental(lc_seg_tiles_bc):
-
-    def __init__(self):
-        super().__init__()
-        self.samples['Classes'] = self.samples['Classes'].apply(lambda x: eval(x.replace(' ', ',')))
-        self.samples = self.samples.explode('Classes', ignore_index=True)
-        self.samples = self.samples[self.samples['Classes'] > 0]
-
-    def __getitem__(self, index):
-        s = self.samples.iloc[index]
-
-        img = np.array(Image.open(s['Img']))[:dim, :dim]
-        img = np.pad(img, ((0, dim - img.shape[0]), (0, dim - img.shape[1])), 'minimum')
-
-        mask = np.array(Image.open(s['Mask']))[:dim, :dim]
-        mask = np.pad(mask, ((0, dim - mask.shape[0]), (0, dim - mask.shape[1])), 'minimum')
-
-        cls = int(s['Classes'])
-        mask = np.where(mask == cls, 1, 0)
-        img = normalise(img) * mask
-        target = np.zeros(num_classes)
-
-        target[cls] = 1
-        img = torch.Tensor(np.array(img).astype(np.float32)).unsqueeze(0)
-        target = torch.Tensor(target)
-        return img, target
 
 
 ################################################ TRAINING
 
 
-def run_epochs(net, dataloader, criterion, optimizer, num_epochs, path, save_freq=100, train=True):
+def run_epochs(net, dataloader, cls_criterion, seg_criterion, optimizer, num_epochs, path, save_freq=100, train=True):
     mode = 'train' if train else 'val'
-    avg_epoch_loss = 0
     if not train:
         net.eval()
 
     for epoch in range(num_epochs):
-        sum_epoch_loss = 0.0
-        sum_epoch_scores = torch.zeros(3)
 
         for i, data in enumerate(dataloader):
 
-            inputs, targets = data
+            inputs, target_masks, target_labels = data
             inputs = inputs.to(device)
-            targets = targets.to(device)
-            cls = torch.argmax(targets, dim=1)
+            target_masks, target_labels = target_masks.to(device), target_labels.to(device)
+            output_masks, output_labels = net(inputs)
+            output_masks, output_labels = torch.sigmoid(output_masks), torch.sigmoid(output_labels)
 
-            if args.experimental:
-                outputs = torch.softmax(net(inputs), dim=1)
-                loss = criterion(outputs, cls)
-            else:
-                outputs = torch.sigmoid(net(inputs))
-                loss = criterion(outputs, targets)
+            target_masks = F.interpolate(target_masks, (32, 32))
+
+            classifier_loss = cls_criterion(output_labels, target_labels)
+            segmentation_loss = seg_criterion(output_masks, target_masks)
 
             if train:
                 optimizer.zero_grad()
+                if args.classifier:
+                    loss = classifier_loss
+                elif args.dual:
+                    loss = classifier_loss + segmentation_loss
+                else:
+                    loss = segmentation_loss
+
                 loss.backward()
                 optimizer.step()
 
             print('({}) Epoch: {}/{} Batch: {}/{} Batch Loss {}'.format(mode, epoch, num_epochs, i, len(dataloader), loss.item()))
 
-            batch_scores = scores(outputs, targets)
+            cls_batch_scores = scores(output_labels, target_labels)
+            seg_batch_scores = scores(output_masks, target_masks)
 
-            print(dict(zip(['prec', 'rec', 'f1'], batch_scores)))
+            results = {'{}/batch'.format(mode): i, '{}/epoch'.format(mode): epoch, '{}/cls/loss'.format(mode): classifier_loss.item(), '{}/seg/loss'.format(mode): segmentation_loss.item(),
+                       '{}/loss'.format(mode): loss.item()}
 
-            sum_epoch_loss += loss.item()
-            sum_epoch_scores += batch_scores
+            results.update(dict(zip(['{}/cls/'.format(mode) + s for s in ['prec', 'rec', 'f1']], cls_batch_scores)))
+            results.update(dict(zip(['{}/seg/'.format(mode) + s for s in ['prec', 'rec', 'f1']], seg_batch_scores)))
 
-            epoch_loss = sum_epoch_loss / (i + 1)
-            epoch_scores = sum_epoch_scores / (i + 1)
-
-            results = {'{}/batch'.format(mode): i, '{}/epoch'.format(mode): epoch, '{}/batch_loss'.format(mode): loss.item(), '{}/epoch_loss'.format(mode): epoch_loss}
-
-            results.update(dict(zip(['{}/epoch_'.format(mode) + s for s in ['prec', 'rec', 'f1']], epoch_scores)))
-            results.update(dict(zip(['{}/batch_'.format(mode) + s for s in ['prec', 'rec', 'f1']], batch_scores)))
+            if args.classifier or args.dual:
+                print(target_labels[0], output_labels[0])
+                correct = torch.sum(torch.round(output_labels) == torch.round(target_labels)) / args.batch_size
+                print("{}% correct".format(correct*100))
+                results['{}/cls/correct_labels'.format(mode)] = correct.cpu()
+                results["{}/cls/target_labels".format(mode)] = target_labels[0].cpu()
+                results["{}/cls/output_labels".format(mode)] = output_labels[0].cpu()
 
             if i % save_freq == 0:
-                results["{}/inputs".format(mode)] = [wandb.Image(inputs[0])]
-                if args.experimental:
-                    correct = torch.sum(torch.round(outputs) == targets)
-                    print("{}/{} correct".format(correct, args.batch_size))
-                    results['{}/correct'.format(mode)] = correct
-                else:
-                    results["{}/outputs".format(mode)] = [wandb.Image(i) for i in outputs]
-                    results["{}/masks".format(mode)] = [wandb.Image(i) for i in targets]
-
+                results["{}/inputs".format(mode)] = [wandb.Image(i) for i in inputs.cpu()]
+                results["{}/seg/output_masks".format(mode)] = [wandb.Image(i) for i in output_masks.cpu()]
+                results["{}/seg/target_masks".format(mode)] = [wandb.Image(i) for i in target_masks.cpu()]
             wandb.log(results)
-
-        print('Completed epoch {}. Avg epoch loss: {}'.format(epoch, sum_epoch_loss / (i + 1)))
 
         if train:
             print('Saving model...')
             torch.save(net.state_dict(), path)
             print('Evaluating network...')
             with torch.no_grad():
-                _ = run_epochs(net, eval_loader, criterion, None, 1, None, train=False, save_freq=args.save_freq)
-
-        avg_epoch_loss += epoch_loss
-
-    final_results = {'{}_samples'.format(mode): len(dataloader) * args.batch_size, '{}/avg_epoch_loss'.format(mode): avg_epoch_loss / num_epochs}
-    wandb.log(final_results)
+                _ = run_epochs(net, eval_loader, cls_criterion, seg_criterion, None, 1, None, train=False, save_freq=args.save_freq)
 
     return net
 
 
 dataset = lc_seg_tiles_bc()
-net = eval(args.model)(args.encoder, in_channels=1, classes=1)
-criterion = eval(args.lf)
 
-if args.experimental:
-    dataset = experimental()
-    net = eval(args.model)(args.encoder, in_channels=1, classes=num_classes)
-    criterion = nn.NLLLoss()
+net = eval(args.model)(args.encoder, in_channels=1, classes=1, upsampling=1,aux_params=dict(
+    pooling='avg',             # one of 'avg', 'max'
+    dropout=0.0,               # dropout ratio, default is None
+    activation=None,      # activation function, default is None
+    classes=1,                 # define number of output labels
+))
 
-"""
-# multiclass segmentation
-dataset = lc_seg_tiles_mc()
-net = eval(args.model)(n_channels=1, n_classes=num_classes)
-criterion = nn.CrossEntropyLoss()
-
-"""
+cls_criterion = eval(args.cls_lf)
+seg_criterion = eval(args.seg_lf)
 
 if torch.cuda.device_count() > 1:
     print("Using", torch.cuda.device_count(), "GPUs.")
@@ -403,6 +339,7 @@ net.to(device)
 num_epochs = args.epochs
 optimizer = optim.Adam(net.parameters(), lr=args.lr)
 wandb.watch(net)
+wandb.log({'samples': len(dataset)})
 
 train_size = int(0.8 * len(dataset))
 val_test_size = len(dataset) - train_size
@@ -422,8 +359,8 @@ if args.load is not '':
 
 if args.train:
     print('Training network...')
-    _ = run_epochs(net, train_loader, criterion, optimizer, num_epochs, 'params/' + params_id + '.pth', save_freq=min(train_size, args.save_freq))
+    _ = run_epochs(net, train_loader, cls_criterion, seg_criterion, optimizer, num_epochs, 'params/' + params_id + '.pth', save_freq=min(train_size, args.save_freq))
 
 else:
     with torch.no_grad():
-        _ = run_epochs(net, eval_loader, criterion, None, 1, None, train=False, save_freq=args.save_freq)
+        _ = run_epochs(net, eval_loader, cls_criterion, seg_criterion, None, 1, None, train=False, save_freq=args.save_freq)
