@@ -9,6 +9,9 @@ def name = GeneralTools.getNameWithoutExtension(imageData.getServer().getMetadat
 def pathOutput = buildFilePath(PROJECT_BASE_DIR, name)
 mkdirs(pathOutput)
 
+
+if False:
+
 // Define output resolution
 // double requestedPixelSize = 1
 

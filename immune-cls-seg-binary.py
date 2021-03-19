@@ -55,13 +55,13 @@ parser.add_argument('--note', default='')
 parser.add_argument('--model', default='smp.Unet')
 parser.add_argument('--encoder', default='resnet34')
 parser.add_argument('--cls_lf', default='nn.BCELoss()')
-parser.add_argument('--seg_lf', default='f1_loss')
+parser.add_argument('--seg_lf', default='focal_loss')
 parser.add_argument('--cls', type=int, default=-1)
 parser.add_argument('--slides', default=None)
 parser.add_argument('--augment', default=False, action='store_true')
 parser.add_argument('--classifier', default=False, action='store_true')
 parser.add_argument('--downsample', default=False, action='store_true')
-parser.add_argument('--dual', default=False, action='store_true')
+parser.add_argument('--centroids', default=False, action='store_true')
 
 args = parser.parse_args()
 
@@ -127,21 +127,23 @@ def equalise(img):
     return np.sort(img.ravel()).searchsorted(img)
 
 
-def get_mean_and_std(loader):
+def get_stats(loader):
     mean = 0
     std = 0
+    minimum = 9999999
+    maximum = 0
     for i, data in enumerate(loader):
-        inputs, target_masks, target_labels, orig_targets = data
-
-        batch_samples = inputs.size(0)
-        inputs = inputs.view(batch_samples, inputs.size(1), -1)
-        mean += inputs.mean(2).sum(0)
-        std += inputs.std(2).sum(0)
+        print(i, '/', len(loader))
+        inputs, _, _, _ = data
+        mean += inputs.mean()
+        std += inputs.std()
+        maximum = max(inputs.max(), maximum)
+        minimum = min(inputs.min(), minimum)
 
     mean /= len(loader.dataset)
     std /= len(loader.dataset)
 
-    return mean, std
+    return mean, std, minimum, maximum
 
 
 def min_pool(target, x, y):
@@ -232,6 +234,7 @@ if not os.path.exists('sample_paths.csv'):
     samples = {}
     for d in data:
         dn = d.split(']')[0] + ']'
+        print(dn)
         sample = samples[dn] if dn in samples else {}
         if '-labelled' in d:
             sample['Mask'] = d
@@ -247,17 +250,51 @@ if not os.path.exists('sample_paths.csv'):
     print('\n', len(samples))
     print('DONE!')
 
+"""
+if not os.path.exists('sample_paths_and_centroids.csv'):
+    print('Building data paths...')
+
+    data = glob.glob("data/new_exported_tiles/*/*")
+
+    centroid_data = glob.glob("data/new_exported_coords/*.txt")
+
+    samples = {}
+    for d in data:
+        dn = d.split(']')[0] + ']'
+        sample = samples[dn] if dn in samples else {}
+        if '-labelled' in d:
+            sample['Mask'] = d
+            sample['Classes'] = np.unique(np.array(Image.open(d)))
+        else:
+            sample['Img'] = d
+        sample['Slide'] = dn.split('/')[2]
+        samples[dn] = sample
+
+    samples = pd.DataFrame.from_dict(samples, orient='index')
+    samples = samples.dropna()
+    samples.to_csv('sample_paths.csv', index=False)
+    print('\n', len(samples))
+    print('DONE!')
+"""
+
 
 class lc_seg_tiles_bc(Dataset):
 
-    def __init__(self):
+    def __init__(self, slides=None):
+
+        self.mean = 57.912
+        self.std = 66.495
+        self.min = 72
+        self.max = 16463
 
         self.samples = pd.read_csv('sample_paths.csv').sample(frac=args.subset / 100, random_state=0).reset_index(drop=True)
-        if args.slides is not None:
-            self.samples = self.samples[self.samples['Slide'].isin(args.slides.split('_'))]
 
-        if args.cls > 0 and not args.classifier:
-            self.samples = self.samples[self.samples['Classes'].str.contains(str(args.cls))]
+        #self.samples = self.samples[self.samples['Slide'] != 'L111']
+        if slides is not None:
+            self.samples = self.samples[self.samples['Slide'].isin(slides.split('_'))]
+
+        if args.cls is not None and not args.classifier:
+            self.samples = self.samples[self.samples['Classes'].isin(args.cls.split('_'))]
 
         if args.augment:
             flips = [[0, 0], [0, 1], [1, 0], [1, 1]]
@@ -286,11 +323,9 @@ class lc_seg_tiles_bc(Dataset):
         target = np.pad(target, ((0, dim - target.shape[0]), (0, dim - target.shape[1])), 'minimum')
         orig_target = torch.Tensor(target.copy().astype(np.float32)).unsqueeze(0)
 
-        if args.cls > 0:
-            target[target != args.cls] = 0
-        target[target > 0] = 1
+        if args.cls is not None:
+            target = np.isin(target, args.cls.split('_'))
 
-        # img = normalise(img)
         img, target = torch.Tensor(img.astype(np.float32)).unsqueeze(0), torch.Tensor(target.astype(np.float32)).unsqueeze(0)
 
         if args.augment:
@@ -308,28 +343,40 @@ class lc_seg_tiles_bc(Dataset):
 
         label = torch.max(target).unsqueeze(0)
 
+        img = (img - self.min) / (self.max - self.min)
+
         return img, target, label, orig_target
 
 
 ################################################ TRAINING
 
 
-def run_epochs(net, train_loader, val_loader, cls_criterion, seg_criterion, optimizer, num_epochs, path, save_freq=100, train=True):
-    if train:
-        mode = 'train'
-        dataloader = train_loader
-    else:
-        mode = 'val'
-        net.eval()
-        dataloader = val_loader
+def run_epochs(net, train_loader, eval_loader, cls_criterion, seg_criterion, num_epochs, path, save_freq=100, train=True):
+
+    mean_loss = 0
+    mean_scores = np.zeros(4)
+    batch_count = 0
 
     for epoch in range(num_epochs):
-        mean_loss = 0
-        mean_scores = torch.zeros(4)
+
+        if train:
+            print('Training...')
+            mode = 'train'
+            net.train()
+            dataloader = train_loader
+            optimizer = optim.Adam(net.parameters(), lr=args.lr/(epoch + 1))
+        else:
+            print('Evaluating...')
+            mode = 'val'
+            net.eval()
+            dataloader = eval_loader
+
         for i, data in enumerate(dataloader):
+            batch_count += 1
 
             inputs, target_masks, target_labels, orig_targets = data
             inputs = inputs.to(device)
+
             target_masks, target_labels = target_masks.to(device), target_labels.to(device)
             output_masks, output_labels = net(inputs)
             output_masks, output_labels = torch.sigmoid(output_masks), torch.sigmoid(output_labels)
@@ -355,12 +402,15 @@ def run_epochs(net, train_loader, val_loader, cls_criterion, seg_criterion, opti
 
             results = {
                 '{}/batch'.format(mode):         i, '{}/epoch'.format(mode): epoch,
-                '{}/{}'.format(mode, loss_name): loss.item(), '{}/mean_{}'.format(mode, loss_name): mean_loss / (i + 1)
+                '{}/{}'.format(mode, loss_name): loss.item(), '{}/mean_{}'.format(mode, loss_name): mean_loss / batch_count
                 }
 
             if args.classifier:
-                mean_scores += scores(output_labels, target_labels)
-                results.update(dict(zip(['{}/cls/'.format(mode) + s for s in ['BCE', 'prec', 'rec', 'f1']], mean_scores / (i + 1))))
+                batch_scores = scores(output_labels, target_labels)
+                mean_scores += batch_scores
+                results.update(dict(zip(['{}/cls/'.format(mode) + s for s in ['BCE', 'prec', 'rec', 'f1']], mean_scores / batch_count)))
+                results.update(dict(zip(['{}/cls/batch_'.format(mode) + s for s in ['BCE', 'prec', 'rec', 'f1']], batch_scores)))
+
                 print(target_labels[0], output_labels[0])
                 correct = torch.sum(torch.round(output_labels) == torch.round(target_labels)) / args.batch_size
                 print("{}% correct".format(correct * 100))
@@ -368,28 +418,28 @@ def run_epochs(net, train_loader, val_loader, cls_criterion, seg_criterion, opti
                 results["{}/cls/target_labels".format(mode)] = target_labels[0].cpu()
                 results["{}/cls/output_labels".format(mode)] = output_labels[0].cpu()
             else:
-                mean_scores += scores(output_masks, target_masks)
-                results.update(dict(zip(['{}/seg/'.format(mode) + s for s in ['BCE', 'prec', 'rec', 'f1']], mean_scores / (i + 1))))
+                batch_scores = scores(output_masks, target_masks)
+                mean_scores += batch_scores
+                results.update(dict(zip(['{}/seg/'.format(mode) + s for s in ['BCE', 'prec', 'rec', 'f1']], mean_scores / batch_count)))
+                results.update(dict(zip(['{}/seg/batch_'.format(mode) + s for s in ['BCE', 'prec', 'rec', 'f1']], batch_scores)))
 
             if i % save_freq == 0:
                 if not args.classifier:
-                    results["{}/inputs".format(mode)] = [wandb.Image(i) for i in inputs.cpu()]
-                    results["{}/seg/output_masks".format(mode)] = [wandb.Image(i) for i in output_masks.cpu()]
-                    results["{}/seg/target_masks".format(mode)] = [wandb.Image(i) for i in target_masks.cpu()]
-                    results["{}/seg/orig_targets".format(mode)] = [wandb.Image(i) for i in orig_targets.cpu()]
+                    results["{}/inputs".format(mode)] = [wandb.Image(im) for im in inputs.cpu()]
+                    results["{}/seg/output_masks".format(mode)] = [wandb.Image(im) for im in output_masks.cpu()]
+                    results["{}/seg/target_masks".format(mode)] = [wandb.Image(im) for im in target_masks.cpu()]
+                    results["{}/seg/orig_targets".format(mode)] = [wandb.Image(im) for im in orig_targets.cpu()]
             wandb.log(results)
 
         if train:
             print('Saving model...')
             torch.save(net.state_dict(), path)
-            print('Evaluating network...')
             with torch.no_grad():
-                _ = run_epochs(net, None, eval_loader, cls_criterion, seg_criterion, None, 1, None, train=False, save_freq=args.save_freq)
+                run_epochs(net, None, eval_loader, cls_criterion, seg_criterion, 1, None, train=False, save_freq=args.save_freq)
+    return
 
-    return net
 
-
-dataset = lc_seg_tiles_bc()
+dataset = lc_seg_tiles_bc(slides=args.slides)
 
 if args.downsample:
     upsampling = 1
@@ -419,7 +469,6 @@ if torch.cuda.device_count() > 1:
 
 net.to(device)
 num_epochs = args.epochs
-optimizer = optim.AdamW(net.parameters(), lr=args.lr)
 wandb.watch(net)
 wandb.log({'samples': len(dataset)})
 
@@ -434,6 +483,10 @@ val_data, test_data = torch.utils.data.random_split(val_test_data, [val_size, te
 train_loader = torch.utils.data.DataLoader(train_data, batch_size=args.batch_size, shuffle=True, worker_init_fn=np.random.seed(0), num_workers=0)
 eval_loader = torch.utils.data.DataLoader(val_data, batch_size=args.batch_size, shuffle=True, worker_init_fn=np.random.seed(0), num_workers=0)
 
+#print('Getting stats...')
+#MEAN, STD, MIN, MAX = get_stats(train_loader)
+#wandb.log({"train_mean": MEAN, "train_std": STD, "train_min": MIN, "train_max": MAX})
+
 print('{} training samples, {} validation samples...'.format(train_size, val_size))
 
 if args.load is not '':
@@ -441,8 +494,15 @@ if args.load is not '':
 
 if args.train:
     print('Training network...')
-    _ = run_epochs(net, train_loader, eval_loader, cls_criterion, seg_criterion, optimizer, num_epochs, 'params/' + params_id + '.pth', save_freq=min(train_size, args.save_freq))
+    run_epochs(net, train_loader, eval_loader, cls_criterion, seg_criterion, num_epochs, 'params/' + params_id + '.pth', save_freq=min(train_size, args.save_freq))
 
 else:
-    with torch.no_grad():
-        _ = run_epochs(net, None, eval_loader, cls_criterion, seg_criterion, None, 1, None, train=False, save_freq=args.save_freq)
+
+    """
+    L111_dataset = lc_seg_tiles_bc('L111')
+    print('Validating on L111 ONLY')
+    L111_loader = torch.utils.data.DataLoader(L111_dataset, batch_size=1, shuffle=True, worker_init_fn=np.random.seed(0), num_workers=0)
+    eval_loader = L111_loader
+    """
+
+    run_epochs(net, None, eval_loader, cls_criterion, seg_criterion, 1, None, train=False, save_freq=args.save_freq)
