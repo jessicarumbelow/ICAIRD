@@ -19,6 +19,7 @@ import torchvision
 import random
 import torchvision.transforms.functional as TF
 import segmentation_models_pytorch as smp
+from hipe import hierarchical_perturbation
 
 torch.set_printoptions(precision=4, linewidth=300)
 np.set_printoptions(precision=4, linewidth=300)
@@ -57,8 +58,11 @@ parser.add_argument('--encoder', default='resnet34')
 parser.add_argument('--cls_lf', default='nn.BCELoss()')
 parser.add_argument('--seg_lf', default='focal_loss')
 parser.add_argument('--cls', type=int, default=-1)
+parser.add_argument('--hipe_cells', type=int, default=0)
 parser.add_argument('--slides', default=None)
 parser.add_argument('--augment', default=False, action='store_true')
+parser.add_argument('--lr_decay', default=False, action='store_true')
+parser.add_argument('--neg_augment', default=False, action='store_true')
 parser.add_argument('--classifier', default=False, action='store_true')
 parser.add_argument('--downsample', default=False, action='store_true')
 parser.add_argument('--centroids', default=False, action='store_true')
@@ -156,31 +160,8 @@ def min_pool(target, x, y):
 ################################################ METRICS
 
 
-def scores(output, target):
-    bce = F.binary_cross_entropy(output, target).item()
-
-    output = torch.round(output)
-    conf = output / target
-    tp, fp, tn, fn = torch.sum(conf == 1).item(), torch.sum(conf == float('inf')).item(), torch.sum(torch.isnan(conf)).item(), torch.sum(conf == 0).item()
-
-    if (tp + fp) == 0:
-        precision = 0
-    else:
-        precision = tp / (tp + fp)
-
-    if (tp + fn) == 0:
-        recall = 0
-    else:
-        recall = tp / (tp + fn)
-
-    f1 = 2 * ((precision * recall) / max(precision + recall, 0.0001))
-
-    return np.array([bce, precision, recall, f1])
-
-
 def f1_loss(output, target):
     tp = torch.sum(target * output)
-    tn = torch.sum((1 - target) * (1 - output))
     fp = torch.sum((1 - target) * output)
     fn = torch.sum(target * (1 - output))
 
@@ -193,24 +174,25 @@ def f1_loss(output, target):
     return 1 - torch.mean(f1)
 
 
-def dice_loss(outputs, targets, smooth=1):
-    outputs, targets = outputs.reshape(-1), targets.reshape(-1)
+def scores(output, target):
+    with torch.no_grad():
+        bce = F.binary_cross_entropy(output, target)
 
-    intersection = (outputs * targets).sum()
-    dice = (2. * intersection + smooth) / (outputs.sum() + targets.sum() + smooth)
+        tp = torch.sum(target * output)
+        tn = torch.sum((1 - target) * (1 - output))
+        fp = torch.sum((1 - target) * output)
+        fn = torch.sum(target * (1 - output))
 
-    return 1 - dice
+        p = tp / (tp + fp + 0.0001)
+        r = tp / (tp + fn + 0.0001)
 
+        f1 = 2 * p * r / (p + r + 0.0001)
+        f1 = torch.where(torch.isnan(f1), torch.zeros_like(f1), f1)
+        acc = (tp + tn) / (tp + tn + fp + fn)
 
-def iou_loss(outputs, targets, smooth=1):
-    outputs, targets = outputs.reshape(-1), targets.reshape(-1)
-    intersection = (outputs * targets).sum()
-    total = (outputs + targets).sum()
-    union = total - intersection
+        iou = tp / ((torch.sum(output + target) - tp) + 0.0001)
 
-    iou = (intersection + smooth) / (union + smooth)
-
-    return 1 - iou
+    return np.array([iou.item(), acc.item(), bce.item(), p.item(), r.item(), f1.item()])
 
 
 def focal_loss(outputs, targets, alpha=0.8, gamma=2):
@@ -289,12 +271,19 @@ class lc_seg_tiles_bc(Dataset):
 
         self.samples = pd.read_csv('sample_paths.csv').sample(frac=args.subset / 100, random_state=0).reset_index(drop=True)
 
-        #self.samples = self.samples[self.samples['Slide'] != 'L111']
+        # self.samples = self.samples[self.samples['Slide'] != 'L111']
         if slides is not None:
             self.samples = self.samples[self.samples['Slide'].isin(slides.split('_'))]
 
-        if args.cls is not None and not args.classifier:
-            self.samples = self.samples[self.samples['Classes'].isin(args.cls.split('_'))]
+        if args.cls > 0 and not args.classifier:
+            self.samples = self.samples[self.samples['Classes'].str.contains(str(args.cls))]
+
+        if args.neg_augment:
+
+            neg_cls = np.append(np.ones(len(self.samples)), np.zeros(len(self.samples)))
+            self.samples = pd.concat([self.samples, self.samples], ignore_index=True)
+            self.samples['Neg'] = neg_cls
+            self.samples = self.samples.sample(frac=1, random_state=0).reset_index(drop=True)
 
         if args.augment:
             flips = [[0, 0], [0, 1], [1, 0], [1, 1]]
@@ -321,10 +310,6 @@ class lc_seg_tiles_bc(Dataset):
 
         target = np.array(Image.open(s['Mask']))[:dim, :dim]
         target = np.pad(target, ((0, dim - target.shape[0]), (0, dim - target.shape[1])), 'minimum')
-        orig_target = torch.Tensor(target.copy().astype(np.float32)).unsqueeze(0)
-
-        if args.cls is not None:
-            target = np.isin(target, args.cls.split('_'))
 
         img, target = torch.Tensor(img.astype(np.float32)).unsqueeze(0), torch.Tensor(target.astype(np.float32)).unsqueeze(0)
 
@@ -341,9 +326,19 @@ class lc_seg_tiles_bc(Dataset):
                 img = TF.vflip(img)
                 target = TF.vflip(target)
 
-        label = torch.max(target).unsqueeze(0)
-
         img = (img - self.min) / (self.max - self.min)
+
+        if args.neg_augment and s['Neg'] == 0:
+            img = img * np.abs(target - 1)
+            target = torch.zeros_like(target)
+
+        orig_target = target.clone()
+
+        if args.cls > 0:
+            target[target != args.cls] = 0
+        target[target > 0] = 1
+
+        label = torch.max(target).unsqueeze(0)
 
         return img, target, label, orig_target
 
@@ -352,24 +347,32 @@ class lc_seg_tiles_bc(Dataset):
 
 
 def run_epochs(net, train_loader, eval_loader, cls_criterion, seg_criterion, num_epochs, path, save_freq=100, train=True):
-
     mean_loss = 0
-    mean_scores = np.zeros(4)
+    mean_scores = np.zeros(6)
     batch_count = 0
 
     for epoch in range(num_epochs):
+
+        if args.lr_decay:
+            lr = args.lr / (epoch + 1)
+        else:
+            lr = args.lr
 
         if train:
             print('Training...')
             mode = 'train'
             net.train()
             dataloader = train_loader
-            optimizer = optim.Adam(net.parameters(), lr=args.lr/(epoch + 1))
+            optimizer = optim.Adam(net.parameters(), lr=lr)
+
         else:
             print('Evaluating...')
             mode = 'val'
             net.eval()
             dataloader = eval_loader
+            lr = 0
+
+        save_freq = max(min(save_freq, len(dataloader) - 1), 1)
 
         for i, data in enumerate(dataloader):
             batch_count += 1
@@ -402,33 +405,44 @@ def run_epochs(net, train_loader, eval_loader, cls_criterion, seg_criterion, num
 
             results = {
                 '{}/batch'.format(mode):         i, '{}/epoch'.format(mode): epoch,
-                '{}/{}'.format(mode, loss_name): loss.item(), '{}/mean_{}'.format(mode, loss_name): mean_loss / batch_count
+                '{}/{}'.format(mode, loss_name): loss.item(), '{}/mean_{}'.format(mode, loss_name): mean_loss / batch_count, '{}/lr'.format(mode): lr
                 }
 
-            if args.classifier:
-                batch_scores = scores(output_labels, target_labels)
-                mean_scores += batch_scores
-                results.update(dict(zip(['{}/cls/'.format(mode) + s for s in ['BCE', 'prec', 'rec', 'f1']], mean_scores / batch_count)))
-                results.update(dict(zip(['{}/cls/batch_'.format(mode) + s for s in ['BCE', 'prec', 'rec', 'f1']], batch_scores)))
+            scores_list = ['IOU', 'acc', 'BCE', 'prec', 'rec', 'f1']
 
-                print(target_labels[0], output_labels[0])
+            if args.classifier:
+
+                print(target_labels.reshape(-1), '\n', output_labels.reshape(-1))
                 correct = torch.sum(torch.round(output_labels) == torch.round(target_labels)) / args.batch_size
                 print("{}% correct".format(correct * 100))
-                results['{}/cls/correct_labels'.format(mode)] = correct.cpu()
-                results["{}/cls/target_labels".format(mode)] = target_labels[0].cpu()
-                results["{}/cls/output_labels".format(mode)] = output_labels[0].cpu()
-            else:
-                batch_scores = scores(output_masks, target_masks)
-                mean_scores += batch_scores
-                results.update(dict(zip(['{}/seg/'.format(mode) + s for s in ['BCE', 'prec', 'rec', 'f1']], mean_scores / batch_count)))
-                results.update(dict(zip(['{}/seg/batch_'.format(mode) + s for s in ['BCE', 'prec', 'rec', 'f1']], batch_scores)))
+                results['{}/correct_labels'.format(mode)] = correct.cpu()
+                results["{}/target_labels".format(mode)] = target_labels[0].cpu()
+                results["{}/output_labels".format(mode)] = output_labels[0].cpu()
+                outputs, targets = output_labels, target_labels
+                hipe_target = 0
 
-            if i % save_freq == 0:
-                if not args.classifier:
-                    results["{}/inputs".format(mode)] = [wandb.Image(im) for im in inputs.cpu()]
-                    results["{}/seg/output_masks".format(mode)] = [wandb.Image(im) for im in output_masks.cpu()]
-                    results["{}/seg/target_masks".format(mode)] = [wandb.Image(im) for im in target_masks.cpu()]
-                    results["{}/seg/orig_targets".format(mode)] = [wandb.Image(im) for im in orig_targets.cpu()]
+            else:
+                outputs, targets = output_masks, target_masks
+                hipe_target = None
+
+            batch_scores = scores(outputs, targets)
+            mean_scores += batch_scores
+            results.update(dict(zip(['{}/'.format(mode) + s for s in scores_list], mean_scores / batch_count)))
+            results.update(dict(zip(['{}/batch_'.format(mode) + s for s in scores_list], batch_scores)))
+
+            if batch_count % save_freq == 0:
+
+                results["{}/inputs".format(mode)] = [wandb.Image(im) for im in inputs.cpu()]
+                results["{}/output_masks".format(mode)] = [wandb.Image(im) for im in output_masks.cpu()]
+                results["{}/target_masks".format(mode)] = [wandb.Image(im) for im in target_masks.cpu()]
+                results["{}/orig_targets".format(mode)] = [wandb.Image(im) for im in orig_targets.cpu()]
+
+                if args.hipe_cells > 0:
+                    hipe, hipe_masks = hierarchical_perturbation(net, inputs[0].unsqueeze(0).detach(), target=hipe_target, batch_size=1, num_cells=args.hipe_cells, perturbation_type='fade')
+                    results["{}/hipe".format(mode)] = wandb.Image(hipe.cpu())
+                    results["{}/hipe_masks".format(mode)] = hipe_masks
+
+
             wandb.log(results)
 
         if train:
@@ -436,6 +450,7 @@ def run_epochs(net, train_loader, eval_loader, cls_criterion, seg_criterion, num
             torch.save(net.state_dict(), path)
             with torch.no_grad():
                 run_epochs(net, None, eval_loader, cls_criterion, seg_criterion, 1, None, train=False, save_freq=args.save_freq)
+
     return
 
 
@@ -483,9 +498,9 @@ val_data, test_data = torch.utils.data.random_split(val_test_data, [val_size, te
 train_loader = torch.utils.data.DataLoader(train_data, batch_size=args.batch_size, shuffle=True, worker_init_fn=np.random.seed(0), num_workers=0)
 eval_loader = torch.utils.data.DataLoader(val_data, batch_size=args.batch_size, shuffle=True, worker_init_fn=np.random.seed(0), num_workers=0)
 
-#print('Getting stats...')
-#MEAN, STD, MIN, MAX = get_stats(train_loader)
-#wandb.log({"train_mean": MEAN, "train_std": STD, "train_min": MIN, "train_max": MAX})
+# print('Getting stats...')
+# MEAN, STD, MIN, MAX = get_stats(train_loader)
+# wandb.log({"train_mean": MEAN, "train_std": STD, "train_min": MIN, "train_max": MAX})
 
 print('{} training samples, {} validation samples...'.format(train_size, val_size))
 
@@ -494,7 +509,7 @@ if args.load is not '':
 
 if args.train:
     print('Training network...')
-    run_epochs(net, train_loader, eval_loader, cls_criterion, seg_criterion, num_epochs, 'params/' + params_id + '.pth', save_freq=min(train_size, args.save_freq))
+    run_epochs(net, train_loader, eval_loader, cls_criterion, seg_criterion, num_epochs, 'params/' + params_id + '.pth', save_freq=args.save_freq)
 
 else:
 

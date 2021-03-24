@@ -1,12 +1,10 @@
-
 """
-Implementation of hierarchical perturbation for saliency map generation from:
+Implementation of hierarchical perturbation for saliency map generation adapted from:
 
 Believe The HiPe: Hierarchical Perturbation for Fast and Robust Explanation of Black Box Models
 https://arxiv.org/abs/2103.05108
 
 """
-
 
 import torch
 import numpy as np
@@ -22,6 +20,7 @@ from IPython.display import clear_output
 https://arxiv.org/abs/2103.05108
 """
 
+
 def hierarchical_perturbation(model,
                               input,
                               target,
@@ -29,9 +28,9 @@ def hierarchical_perturbation(model,
                               interp_mode='nearest',
                               resize=None,
                               batch_size=32,
-                              perturbation_type='mean'):
+                              perturbation_type='mean',
+                              num_cells=4):
     with torch.no_grad():
-
         # Get device of input (i.e., GPU).
         dev = input.device
         if dev == 'cpu':
@@ -40,12 +39,20 @@ def hierarchical_perturbation(model,
         dim = min(input_x_dim, input_y_dim)
         total_masks = 0
         depth = 0
-        num_cells = 4
-        max_depth = int(np.log2(dim / num_cells)) - 2
+        max_depth = int(np.log2(dim / num_cells)) - 1
         saliency = torch.zeros((1, 1, input_y_dim, input_x_dim), device=dev)
         max_batch = batch_size
 
-        output = model(input)[:, target]
+        if target is None:
+            def _model(x):
+                output, _ = model(x)
+                return output
+        else:
+            def _model(x):
+                _, output = model(x)
+                return output[0]
+
+        output = _model(input)
 
         if perturbation_type == 'blur':
             pre_b_image = blur(input.clone().cpu()).to(dev)
@@ -58,9 +65,9 @@ def hierarchical_perturbation(model,
             depth += 1
             threshold = torch.min(saliency) + ((torch.max(saliency) - torch.min(saliency)) / 2)
 
-            # print('Depth: {}, {} x {} Cell'.format(depth, input_y_dim//num_cells, input_x_dim//num_cells))
-            # print('Threshold: {:.1f}'.format(threshold))
-            # print('Range {:.1f} to {:.1f}'.format(saliency.min(), saliency.max()))
+            print('Depth: {}, {} x {} Cell'.format(depth, input_y_dim//num_cells, input_x_dim//num_cells))
+            print('Threshold: {:.1f}'.format(threshold))
+            print('Range {:.1f} to {:.1f}'.format(saliency.min(), saliency.max()))
 
             y_ixs = range(-1, num_cells)
             x_ixs = range(-1, num_cells)
@@ -123,9 +130,12 @@ def hierarchical_perturbation(model,
                 masks = F.interpolate(masks, (input_y_dim, input_x_dim), mode=interp_mode)
 
                 if perturbation_type == 'fade':
-                    perturbed_outputs = torch.relu(output - model(input * masks)[:, target])
+                    perturbed_outputs = torch.relu(output - _model(input * masks))
                 else:
-                    perturbed_outputs = torch.relu(output - model(b_imgs)[:, target])
+                    perturbed_outputs = torch.relu(output - _model(b_imgs))
+
+                if target is None:
+                    perturbed_outputs = torch.sum(perturbed_outputs, dim=(-1, -2))
 
                 sal = perturbed_outputs * torch.abs(masks.transpose(0, 1) - 1)
                 saliency += torch.sum(sal, dim=(0, 1))

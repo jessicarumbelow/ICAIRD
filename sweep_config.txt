@@ -1,13 +1,10 @@
-program: run_mask.py
+program: immune-cls-seg-binary.py
 command:
   - ${env}
   - python3
-  - run_mask.py
+  - immune-cls-seg-binary.py
   - --train
 method: grid
-metric:
-  goal: maximize
-  name: val/epoch_f1
 parameters:
   batch_size:
     values:
@@ -16,19 +13,35 @@ parameters:
   model:
     values:
       - smp.Unet
-      - smp.UnetPlusPlus
-      - smp.MAnet
-      - smp.Linknet
-      - smp.FPN
-      - smp.PSPNet
-      - smp.PAN
-      - smp.DeepLabV3
-      - smp.DeepLabV3Plus
     distribution: categorical
   lr:
     values:
       - 0.001
-      - 0.0001
-      - 0.00001
-      - 0.000001
     distribution: categorical
+  seg_lf:
+    values:
+      - focal_loss
+    distribution: categorical
+  slides:
+    values:
+      - L111
+  augment:
+    values:
+      - True
+    distribution: categorical
+  epochs:
+    values:
+      - 30
+  cls:
+    values:
+      - 1
+      - 2
+      - 3
+      - 4
+      - -1
+    distribution: categorical
+  lr_decay:
+    values:
+      - True
+    distribution: categorical
+
