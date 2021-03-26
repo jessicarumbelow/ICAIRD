@@ -44,20 +44,20 @@ def set_seed():
 set_seed()
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--batch_size', type=int, default=1)
+parser.add_argument('--batch_size', type=int, default=32)
 parser.add_argument('--epochs', type=int, default=1)
 parser.add_argument('--lr', type=float, default=0.001)
 parser.add_argument('--conv_thresh', type=float, default=0)
 parser.add_argument('--save_freq', default=100, type=int)
 parser.add_argument('--subset', default=100, type=int)
 parser.add_argument('--train', default=False, action='store_true')
+parser.add_argument('--test', default=False, action='store_true')
 parser.add_argument('--load', default='')
 parser.add_argument('--note', default='')
 parser.add_argument('--model', default='smp.Unet')
 parser.add_argument('--encoder', default='resnet34')
 parser.add_argument('--cls_lf', default='nn.BCELoss()')
 parser.add_argument('--seg_lf', default='focal_loss')
-parser.add_argument('--cls', type=int, default=-1)
 parser.add_argument('--hipe_cells', type=int, default=0)
 parser.add_argument('--slides', default=None)
 parser.add_argument('--augment', default=False, action='store_true')
@@ -71,7 +71,7 @@ args = parser.parse_args()
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-# os.environ["WANDB_SILENT"] = "true"
+os.environ["WANDB_SILENT"] = "true"
 
 if args.classifier:
     proj = "immune_cls_multi"
@@ -216,6 +216,14 @@ def scores(o, t):
     return score_arr
 
 
+def get_class_weights(targets):
+    weights = torch.ones(5, device=device)
+    for cls_num in range(1, 5):
+        weights[cls_num] += (1 - targets[targets == cls_num].reshape(-1).shape[0] / targets[targets != 0].reshape(-1).shape[0])
+    print(weights)
+    return weights
+
+
 def focal_loss(outputs, targets, alpha=0.8, gamma=2):
     CE = F.cross_entropy(outputs, targets, reduction='mean')
     CE_EXP = torch.exp(-CE)
@@ -239,7 +247,8 @@ if not os.path.exists('sample_paths.csv'):
         sample = samples[dn] if dn in samples else {}
         if '-labelled' in d:
             sample['Mask'] = d
-            sample['Classes'] = np.unique(np.array(Image.open(d)))
+            for s in range(5):
+                sample['Class_{}'.format(s)] = 1 if s in np.array(Image.open(d)) else 0
         else:
             sample['Img'] = d
         sample['Slide'] = dn.split('/')[2]
@@ -256,25 +265,21 @@ class lc_seg_tiles_mc(Dataset):
 
     def __init__(self, slides=None):
 
-        self.mean = 1451.7758
-        self.std = 1373.5790
-        self.min = 105.0
-        self.max = 16439.0
-
         self.samples = pd.read_csv('sample_paths.csv').sample(frac=args.subset / 100, random_state=0).reset_index(drop=True)
 
-        self.samples = self.samples[self.samples['Slide'] != 'L111']
+        # self.samples = self.samples[self.samples['Slide'] != 'L111']
         if slides is not None:
             self.samples = self.samples[self.samples['Slide'].isin(slides.split('_'))]
 
-        if args.cls > 0 and not args.classifier:
-            self.samples = self.samples[self.samples['Classes'].str.contains(str(args.cls))]
-
         if args.neg_augment:
 
-            neg_cls = np.append(np.ones(len(self.samples)), np.zeros(len(self.samples)))
-            self.samples = pd.concat([self.samples, self.samples], ignore_index=True)
-            self.samples['Neg'] = neg_cls
+            self.samples['Negate_class'] = 0
+
+            for cls in range(1, 5):
+                cls_samples = self.samples[self.samples['Class_{}'.format(cls)] == 1].copy()
+                cls_samples['Negate_class'] = cls
+                self.samples = pd.concat([self.samples, cls_samples], ignore_index=True)
+
             self.samples = self.samples.sample(frac=1, random_state=0).reset_index(drop=True)
 
         if args.augment:
@@ -318,15 +323,19 @@ class lc_seg_tiles_mc(Dataset):
                 img = TF.vflip(img)
                 target = TF.vflip(target)
 
-        img = (img - self.min) / (self.max - self.min)
-
-        if args.neg_augment and s['Neg'] == 0:
-            img = img * np.abs(target - 1)
-            target = torch.zeros_like(target)
+        img = normalise(img)
 
         orig_target = target.clone()
 
-        label = torch.zeros((5))
+        if args.neg_augment and s['Negate_class'] > 0:
+            target[target == s['Negate_class']] = 0
+            img_mask = target.copy()
+            img_mask[img_mask > 0] = 1
+            img = img * img_mask
+
+        classes = torch.unique(target.reshape(-1)).to(torch.int64)
+        label = torch.zeros(5)
+        label[classes] = 1
 
         return img, target[0].long(), label, orig_target
 
@@ -335,14 +344,13 @@ class lc_seg_tiles_mc(Dataset):
 
 
 def run_epochs(net, train_loader, eval_loader, cls_criterion, seg_criterion, num_epochs, path, save_freq=100, train=True):
-    mean_loss = 0
-    mean_scores = np.zeros((5, 6))
-    batch_count = 0
-
     for epoch in range(num_epochs):
+        total_loss = 0
+        total_scores = np.zeros((5, 6))
 
         if args.lr_decay:
             lr = args.lr / (epoch + 1)
+
         else:
             lr = args.lr
 
@@ -363,14 +371,13 @@ def run_epochs(net, train_loader, eval_loader, cls_criterion, seg_criterion, num
         save_freq = max(min(save_freq, len(dataloader) - 1), 1)
 
         for i, data in enumerate(dataloader):
-            batch_count += 1
 
             inputs, target_masks, target_labels, orig_targets = data
             inputs = inputs.to(device)
 
             target_masks, target_labels = target_masks.to(device), target_labels.to(device)
             output_masks, output_labels = net(inputs)
-            output_masks, output_labels = torch.sigmoid(output_masks), torch.sigmoid(output_labels)
+            output_masks, output_labels = output_masks, output_labels
 
             if args.classifier:
                 loss_name = args.cls_lf
@@ -385,13 +392,15 @@ def run_epochs(net, train_loader, eval_loader, cls_criterion, seg_criterion, num
                 loss.backward()
                 optimizer.step()
 
-            mean_loss += loss.item()
+            output_masks = F.softmax(output_masks, dim=1)
+
+            total_loss += loss.item()
 
             print('({}) Epoch: {}/{} Batch: {}/{} Batch {} {}'.format(mode, epoch, num_epochs, i, len(dataloader), loss_name, loss.item()))
 
             results = {
                 '{}/batch'.format(mode):         i, '{}/epoch'.format(mode): epoch,
-                '{}/{}'.format(mode, loss_name): loss.item(), '{}/mean_{}'.format(mode, loss_name): mean_loss / batch_count, '{}/lr'.format(mode): lr
+                '{}/{}'.format(mode, loss_name): loss.item(), '{}/mean_{}'.format(mode, loss_name): total_loss / (i + 1), '{}/lr'.format(mode): lr
                 }
 
             scores_list = ['IOU', 'acc', 'BCE', 'prec', 'rec', 'f1']
@@ -412,12 +421,12 @@ def run_epochs(net, train_loader, eval_loader, cls_criterion, seg_criterion, num
                 hipe_target = None
 
             batch_scores = scores(outputs, targets)
-            # mean_scores += batch_scores
+            total_scores += batch_scores
             for cls_num in range(5):
-                # results.update(dict(zip(['{}/cls_{}/'.format(mode, cls_num) + s for s in scores_list], mean_scores[cls_num] / batch_count)))
+                results.update(dict(zip(['{}/cls_{}/'.format(mode, cls_num) + s for s in scores_list], total_scores[cls_num] / (i + 1))))
                 results.update(dict(zip(['{}/cls_{}/batch_'.format(mode, cls_num) + s for s in scores_list], batch_scores[cls_num])))
 
-            if batch_count % save_freq == 0:
+            if (i + 1) % save_freq == 0:
 
                 results["{}/inputs".format(mode)] = [wandb.Image(im) for im in inputs.cpu()]
                 results["{}/orig_targets".format(mode)] = [wandb.Image(im) for im in orig_targets.cpu()]
@@ -451,17 +460,10 @@ else:
 
 ap = dict(
         pooling='avg',  # one of 'avg', 'max'
-        dropout=0.0,  # dropout ratio, default is None
-        activation=None,  # activation function, default is None
         classes=1,  # define number of output labels
         )
 
-if "PSP" in args.model:
-    net = eval(args.model)(encoder_name=args.encoder, psp_out_channels=512, psp_use_batchnorm=True, psp_dropout=0.2, in_channels=1, classes=5,
-                           activation=None, upsampling=upsampling, aux_params=ap)
-else:
-    net = eval(args.model)(encoder_name=args.encoder, in_channels=1, classes=5,
-                           activation=None, aux_params=ap)
+net = eval(args.model)(encoder_name=args.encoder, in_channels=1, classes=5, aux_params=ap)
 
 cls_criterion = eval(args.cls_lf)
 seg_criterion = eval(args.seg_lf)
@@ -470,9 +472,7 @@ if torch.cuda.device_count() > 1:
     print("Using", torch.cuda.device_count(), "GPUs.")
     net = nn.DataParallel(net)
 
-net.to(device)
 num_epochs = args.epochs
-wandb.watch(net)
 wandb.log({'samples': len(dataset)})
 
 train_size = int(0.8 * len(dataset))
@@ -485,6 +485,7 @@ val_data, test_data = torch.utils.data.random_split(val_test_data, [val_size, te
 
 train_loader = torch.utils.data.DataLoader(train_data, batch_size=args.batch_size, shuffle=True, worker_init_fn=np.random.seed(0), num_workers=0)
 eval_loader = torch.utils.data.DataLoader(val_data, batch_size=args.batch_size, shuffle=True, worker_init_fn=np.random.seed(0), num_workers=0)
+test_loader = torch.utils.data.DataLoader(test_data, batch_size=args.batch_size, shuffle=True, worker_init_fn=np.random.seed(0), num_workers=0)
 
 """
 print('Getting stats...')
@@ -498,17 +499,17 @@ print('{} training samples, {} validation samples...'.format(train_size, val_siz
 if args.load is not '':
     net.load_state_dict(torch.load('params/' + args.load + ".pth", map_location=torch.device(device)))
 
+net.to(device)
+wandb.watch(net)
+
 if args.train:
     print('Training network...')
     run_epochs(net, train_loader, eval_loader, cls_criterion, seg_criterion, num_epochs, 'params/' + params_id + '.pth', save_freq=args.save_freq)
 
+elif args.test:
+    with torch.no_grad():
+        run_epochs(net, None, eval_loader, cls_criterion, seg_criterion, 1, None, train=False, save_freq=args.save_freq)
+
 else:
-
-    """
-    L111_dataset = lc_seg_tiles_bc('L111')
-    print('Validating on L111 ONLY')
-    L111_loader = torch.utils.data.DataLoader(L111_dataset, batch_size=1, shuffle=True, worker_init_fn=np.random.seed(0), num_workers=0)
-    eval_loader = L111_loader
-    """
-
-    run_epochs(net, None, eval_loader, cls_criterion, seg_criterion, 1, None, train=False, save_freq=args.save_freq)
+    with torch.no_grad():
+        run_epochs(net, None, eval_loader, cls_criterion, seg_criterion, 1, None, train=False, save_freq=args.save_freq)
