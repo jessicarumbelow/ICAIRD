@@ -22,8 +22,8 @@ import segmentation_models_pytorch as smp
 from hipe import hierarchical_perturbation
 from hipe import blur
 
-torch.set_printoptions(precision=4, linewidth=300)
-np.set_printoptions(precision=4, linewidth=300)
+# torch.set_printoptions(precision=4, linewidth=300)
+# np.set_printoptions(precision=4, linewidth=300)
 pd.set_option('display.max_columns', None)
 
 
@@ -87,50 +87,49 @@ if torch.cuda.device_count() > 1:
 wandb.watch(net)
 net.eval()
 
-input_img = torch.nn.Parameter(torch.rand((1, 1, dim, dim), device=device))
 lr = args.lr
 
-# http://numpy-discussion.10968.n7.nabble.com/Drawing-circles-in-a-numpy-array-td4720.html
-radius = 12
-a = np.zeros((256, 256)).astype('uint8')
-cx, cy = 128, 128  # The center of circle
-y, x = np.ogrid[-radius: radius, -radius: radius]
-index = x ** 2 + y ** 2 <= radius ** 2
-a[cy - radius:cy + radius, cx - radius:cx + radius][index] = 1
+target_img = torch.ones((1, 1, dim, dim), device=device)
 
-target_img = torch.Tensor(a).unsqueeze(0).to(device)
 last_loss = 999999
 cls = args.cls
 if cls == 0:
-    target_img = torch.abs(target_img - 1)
+    target_img = torch.zeros_like(target_img)
 
 wandb.log({'target_output': wandb.Image(target_img[0].cpu())})
+
+input_img = torch.nn.Parameter(torch.zeros((1, 1, dim, dim), device=device))
 
 optimizer = optim.Adam([input_img], lr=lr)
 
 for e in range(args.epochs):
     output_imgs, _ = net(input_img)
 
-    loss = torch.mean(torch.abs(output_imgs[0, cls] - target_img))
-
-    optimizer.zero_grad()
-    loss.backward()
-    optimizer.step()
-    print(cls, '-', loss)
-
-    if loss >= last_loss:
-        lr *= args.lr_decay
-        optimizer = optim.Adam([input_img], lr=lr)
-        print('Learning rate: ', lr)
-
-    last_loss = loss
+    loss = F.mse_loss(output_imgs[0, cls], target_img)
 
     if e % args.save_freq == 0:
+
         wandb.log({
-            "model_output":   wandb.Image(output_imgs[0, cls].cpu()), "optim_input": wandb.Image(input_img[0].cpu()), "loss": loss,
+            "model_output":   wandb.Image(output_imgs[0, cls].cpu()),
+            "optim_input":    wandb.Image(input_img[0].cpu()),
+            "loss":           loss,
             "epoch":          e,
             "lr".format(cls): lr
             })
 
+    optimizer.zero_grad()
+    loss.backward()
+    optimizer.step()
+    optimizer.zero_grad()
+    print(e, loss)
+
+    if loss > last_loss:
+        lr *= args.lr_decay
+        optimizer = optim.Adam([input_img], lr=lr)
+        print('Learning rate: ', lr)
+        last_loss = 999999
+
     if loss == 0:
         break
+
+    last_loss = loss
