@@ -210,7 +210,7 @@ class lc_data(Dataset):
 
         self.samples = samples
         if augment:
-            flips = [[0, 0], [0, 1], [1, 0], [1, 1]]
+            flips = [[0, 0], [0, 1], [1, 0]]
             rots = [0, 90, 180, 270]
             augs = []
             for r in rots:
