@@ -209,13 +209,15 @@ class lc_data(Dataset):
     def __init__(self, samples, augment=False):
 
         self.samples = samples
+        self.augment = augment
+
         if augment:
-            flips = [[0, 0], [0, 1], [1, 0]]
+            mirror = [0, 1]
             rots = [0, 90, 180, 270]
             augs = []
             for r in rots:
-                for f1, f2 in flips:
-                    augs.append([f1, f2, r])
+                for m in mirror:
+                    augs.append([m, r])
 
             num_augs = len(augs)
             augs *= len(self.samples)
@@ -237,18 +239,14 @@ class lc_data(Dataset):
 
         img, target = torch.Tensor(img.astype(np.float32)).unsqueeze(0), torch.Tensor(target.astype(np.float32)).unsqueeze(0)
 
-        if args.augment:
-            hflip, vflip, angle = s['Aug']
-            img = TF.rotate(img, angle)
-            target = TF.rotate(target, angle)
+        if self.augment:
+            mir, rot = s['Aug']
+            img = TF.rotate(img, rot)
+            target = TF.rotate(target, rot)
 
-            if hflip == 1:
+            if mir == 1:
                 img = TF.hflip(img)
                 target = TF.hflip(target)
-
-            if vflip == 1:
-                img = TF.vflip(img)
-                target = TF.vflip(target)
 
         img = normalise(img)
 
@@ -364,13 +362,12 @@ if args.stats:
     exit()
 
 train_dataset = lc_data(samples[:train_size], augment=args.augment)
-val_dataset = lc_data(samples[train_size:train_size+val_size], augment=False)
-test_dataset = lc_data(samples[train_size+val_size:], augment=False)
+val_dataset = lc_data(samples[train_size:train_size + val_size], augment=False)
+test_dataset = lc_data(samples[train_size + val_size:], augment=False)
 
 train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, worker_init_fn=np.random.seed(0), num_workers=0)
 eval_loader = torch.utils.data.DataLoader(val_dataset, batch_size=1, shuffle=True, worker_init_fn=np.random.seed(0), num_workers=0)
 test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=1, shuffle=True, worker_init_fn=np.random.seed(0), num_workers=0)
-
 
 net = eval(args.model)(encoder_name=args.encoder, in_channels=1, classes=5)
 
