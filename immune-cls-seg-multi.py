@@ -20,6 +20,7 @@ import random
 import torchvision.transforms.functional as TF
 import segmentation_models_pytorch as smp
 from hipe import hierarchical_perturbation
+from torchvision.utils import save_image
 
 torch.set_printoptions(precision=4, linewidth=300)
 np.set_printoptions(precision=4, linewidth=300)
@@ -56,16 +57,12 @@ parser.add_argument('--load', default='')
 parser.add_argument('--note', default='')
 parser.add_argument('--model', default='smp.Unet')
 parser.add_argument('--encoder', default='resnet34')
-parser.add_argument('--cls_lf', default='nn.BCELoss()')
 parser.add_argument('--seg_lf', default='focal_loss')
-parser.add_argument('--hipe_cells', type=int, default=0)
+parser.add_argument('--hipe_cells', type=int, default=4)
 parser.add_argument('--slides', default=None)
 parser.add_argument('--augment', default=False, action='store_true')
-parser.add_argument('--lr_decay', default=False, action='store_true')
-parser.add_argument('--neg_augment', default=False, action='store_true')
-parser.add_argument('--classifier', default=False, action='store_true')
-parser.add_argument('--downsample', default=False, action='store_true')
-parser.add_argument('--centroids', default=False, action='store_true')
+parser.add_argument('--lr_decay', default=True, action='store_true')
+parser.add_argument('--stats', default=False, action='store_true')
 
 args = parser.parse_args()
 
@@ -73,10 +70,7 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 os.environ["WANDB_SILENT"] = "true"
 
-if args.classifier:
-    proj = "immune_cls_multi"
-else:
-    proj = "immune_seg_multi"
+proj = "immune_seg_multi"
 
 wandb.init(project=proj, entity="jessicamarycooper", config=args)
 args = wandb.config
@@ -89,42 +83,8 @@ dim = 256
 ################################################ HELPERS
 
 
-def show_im(im):
-    d = im.shape[-1]
-    fig, ax = plt.subplots()
-    im = im.reshape(-1, d)
-    plt.imshow(im, cmap='gray')
-    plt.show()
-    plt.close(fig)
-
-
-def save_im(im, name='image'):
-    d = im.shape[-1]
-    im = im.reshape(-1, d, d)
-
-    for cls in range(im.shape[0]):
-        fig, ax = plt.subplots()
-        img = im[cls]
-        plt.imshow(img, cmap='gray')
-        plt.savefig('lc_imgs/' + name + '_' + str(cls) + '.png')
-        plt.close(fig)
-
-
-def standardise(img):
-    return (img - img.mean()) / (img.std() + 0.0001)
-
-
 def normalise(x):
     return (x - x.min()) / max(x.max() - x.min(), 0.0001)
-
-
-def whiten(img):
-    img = img - img.mean()
-    cov = np.dot(img.T, img)
-    d, vec = np.linalg.eigh(cov)
-    diag = np.diag(1 / np.sqrt(d + 0.0001))
-    w = np.dot(np.dot(vec, diag), vec.T)
-    return np.dot(img, w)
 
 
 def equalise(img):
@@ -134,27 +94,34 @@ def equalise(img):
 def get_stats(loader):
     mean = 0
     std = 0
+    var = 0
     minimum = 9999999
     maximum = 0
+    cls_count = torch.zeros(5)
+    cls_covg = torch.zeros(5)
     for i, data in enumerate(loader):
         print(i, '/', len(loader))
-        inputs, _, _, _ = data
-        mean += inputs.mean()
-        std += inputs.std()
-        maximum = max(inputs.max(), maximum)
-        minimum = min(inputs.min(), minimum)
+        input, target = data
+        mean += input.mean()
+        std += input.std()
+        var += input.var()
+        maximum = max(input.max(), maximum)
+        minimum = min(input.min(), minimum)
+        classes = torch.unique(target.reshape(-1)).to(torch.int64)
+        cls_count[classes] += 1
+        for c in range(5):
+            cls_covg[c] += len(target[target == c].reshape(-1)) / len(target.reshape(-1))
 
     mean /= len(loader.dataset)
     std /= len(loader.dataset)
+    var /= len(loader.dataset)
+    cls_count = {'{}_count'.format(i): cls_count[i] / len(loader.dataset) for i in range(5)}
+    cls_covg = {'{}_covg'.format(i): cls_covg[i] / len(loader.dataset) for i in range(5)}
 
-    return mean, std, minimum, maximum
-
-
-def min_pool(target, x, y):
-    tb, tc, tx, ty = target.shape
-    target = F.max_pool2d(target * -1, (tx // x, ty // y), (tx // x, ty // y)) * -1
-
-    return target
+    stats = {'minimum': minimum, 'maximum': maximum, 'mean': mean, 'std': std, 'var': var}
+    stats.update(cls_count)
+    stats.update(cls_covg)
+    return stats
 
 
 def separate_masks(masks):
@@ -172,22 +139,8 @@ def separate_masks(masks):
 ################################################ METRICS
 
 
-def f1_loss(output, target):
-    tp = torch.sum(target * output)
-    fp = torch.sum((1 - target) * output)
-    fn = torch.sum(target * (1 - output))
-
-    p = tp / (tp + fp + 0.0001)
-    r = tp / (tp + fn + 0.0001)
-
-    f1 = 2 * p * r / (p + r + 0.0001)
-    f1 = torch.where(torch.isnan(f1), torch.zeros_like(f1), f1)
-
-    return 1 - torch.mean(f1)
-
-
 def scores(o, t):
-    score_arr = np.zeros((5, 6))
+    score_arr = np.zeros((5, 5))
 
     for cls_num in range(5):
         output = o[:, cls_num]
@@ -197,7 +150,6 @@ def scores(o, t):
         target += 1
 
         with torch.no_grad():
-            bce = F.binary_cross_entropy(output, target)
             tp = torch.sum(target * output)
             tn = torch.sum((1 - target) * (1 - output))
             fp = torch.sum((1 - target) * output)
@@ -211,17 +163,9 @@ def scores(o, t):
             acc = (tp + tn) / (tp + tn + fp + fn)
 
             iou = tp / ((torch.sum(output + target) - tp) + 0.0001)
-        score_arr[cls_num] = np.array([iou.item(), acc.item(), bce.item(), p.item(), r.item(), f1.item()])
+        score_arr[cls_num] = np.array([iou.item(), acc.item(), p.item(), r.item(), f1.item()])
 
     return score_arr
-
-
-def get_class_weights(targets):
-    weights = torch.ones(5, device=device)
-    for cls_num in range(1, 5):
-        weights[cls_num] += (1 - targets[targets == cls_num].reshape(-1).shape[0] / targets[targets != 0].reshape(-1).shape[0])
-    print(weights)
-    return weights
 
 
 def focal_loss(outputs, targets, alpha=0.8, gamma=2):
@@ -261,28 +205,12 @@ if not os.path.exists('sample_paths.csv'):
     print('DONE!')
 
 
-class lc_seg_tiles_mc(Dataset):
+class lc_data(Dataset):
 
-    def __init__(self, slides=None):
+    def __init__(self, samples, augment=False):
 
-        self.samples = pd.read_csv('sample_paths.csv').sample(frac=args.subset / 100, random_state=0).reset_index(drop=True)
-
-        # self.samples = self.samples[self.samples['Slide'] != 'L111']
-        if slides is not None:
-            self.samples = self.samples[self.samples['Slide'].isin(slides.split('_'))]
-
-        if args.neg_augment:
-
-            self.samples['Negate_class'] = 0
-
-            for cls in range(1, 5):
-                cls_samples = self.samples[self.samples['Class_{}'.format(cls)] == 1].copy()
-                cls_samples['Negate_class'] = cls
-                self.samples = pd.concat([self.samples, cls_samples], ignore_index=True)
-
-            self.samples = self.samples.sample(frac=1, random_state=0).reset_index(drop=True)
-
-        if args.augment:
+        self.samples = samples
+        if augment:
             flips = [[0, 0], [0, 1], [1, 0], [1, 1]]
             rots = [0, 90, 180, 270]
             augs = []
@@ -325,28 +253,16 @@ class lc_seg_tiles_mc(Dataset):
 
         img = normalise(img)
 
-        orig_target = target.clone()
-
-        if args.neg_augment and s['Negate_class'] > 0:
-            target[target == s['Negate_class']] = 0
-            img_mask = target.copy()
-            img_mask[img_mask > 0] = 1
-            img = img * img_mask
-
-        classes = torch.unique(target.reshape(-1)).to(torch.int64)
-        label = torch.zeros(5)
-        label[classes] = 1
-
-        return img, target[0].long(), label, orig_target
+        return img, target[0].long()
 
 
 ################################################ TRAINING
 
 
-def run_epochs(net, train_loader, eval_loader, cls_criterion, seg_criterion, num_epochs, path, save_freq=100, train=True):
+def run_epochs(net, train_loader, eval_loader, seg_criterion, num_epochs, path, save_freq=100, train=True):
     for epoch in range(num_epochs):
         total_loss = 0
-        total_scores = np.zeros((5, 6))
+        total_scores = np.zeros((5, 5))
 
         if args.lr_decay:
             lr = args.lr / (epoch + 1)
@@ -372,53 +288,29 @@ def run_epochs(net, train_loader, eval_loader, cls_criterion, seg_criterion, num
 
         for i, data in enumerate(dataloader):
 
-            inputs, target_masks, target_labels, orig_targets = data
-            inputs = inputs.to(device)
+            inputs, targets = data
+            inputs, targets = inputs.to(device), targets.to(device)
 
-            target_masks, target_labels = target_masks.to(device), target_labels.to(device)
-            output_masks, output_labels = net(inputs)
-            output_masks, output_labels = output_masks, output_labels
-
-            if args.classifier:
-                loss_name = args.cls_lf
-                loss = cls_criterion(output_labels, target_labels)
-
-            else:
-                loss_name = args.seg_lf
-                loss = seg_criterion(output_masks, target_masks)
+            outputs = net(inputs)
+            loss = focal_loss(outputs, targets)
 
             if train:
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
 
-            output_masks = F.softmax(output_masks, dim=1)
+            output_masks = F.softmax(outputs, dim=1)
 
             total_loss += loss.item()
 
-            print('({}) Epoch: {}/{} Batch: {}/{} Batch {} {}'.format(mode, epoch, num_epochs, i, len(dataloader), loss_name, loss.item()))
+            print('({}) Epoch: {}/{} Batch: {}/{} Batch Loss {}'.format(mode, epoch, num_epochs, i, len(dataloader), loss.item()))
 
             results = {
-                '{}/batch'.format(mode):         i, '{}/epoch'.format(mode): epoch,
-                '{}/{}'.format(mode, loss_name): loss.item(), '{}/mean_{}'.format(mode, loss_name): total_loss / (i + 1), '{}/lr'.format(mode): lr
+                '{}/batch'.format(mode): i, '{}/epoch'.format(mode): epoch,
+                '{}/loss'.format(mode):  loss.item(), '{}/mean_loss'.format(mode): total_loss / (i + 1), '{}/lr'.format(mode): lr
                 }
 
-            scores_list = ['IOU', 'acc', 'BCE', 'prec', 'rec', 'f1']
-
-            if args.classifier:
-
-                print(target_labels.reshape(-1), '\n', output_labels.reshape(-1))
-                correct = torch.sum(torch.round(output_labels) == torch.round(target_labels)) / args.batch_size
-                print("{}% correct".format(correct * 100))
-                results['{}/correct_labels'.format(mode)] = correct.cpu()
-                results["{}/target_labels".format(mode)] = target_labels[0].cpu()
-                results["{}/output_labels".format(mode)] = output_labels[0].cpu()
-                outputs, targets = output_labels, target_labels
-                hipe_target = 0
-
-            else:
-                outputs, targets = output_masks, target_masks
-                hipe_target = None
+            scores_list = ['IOU', 'acc', 'prec', 'rec', 'f1']
 
             batch_scores = scores(outputs, targets)
             total_scores += batch_scores
@@ -429,16 +321,20 @@ def run_epochs(net, train_loader, eval_loader, cls_criterion, seg_criterion, num
             if (i + 1) % save_freq == 0:
 
                 results["{}/inputs".format(mode)] = [wandb.Image(im) for im in inputs.cpu()]
-                results["{}/orig_targets".format(mode)] = [wandb.Image(im) for im in orig_targets.cpu()]
+                results["{}/orig_targets".format(mode)] = [wandb.Image(im) for im in targets.float().cpu()]
 
                 for cls_im in range(5):
                     results["{}/cls_{}/output".format(mode, cls_im)] = [wandb.Image(im) for im in output_masks[:, cls_im].cpu()]
-                    results["{}/cls_{}/target_masks".format(mode, cls_im)] = [wandb.Image(im) for im in separate_masks(target_masks.float().cpu())[cls_im]]
+                    results["{}/cls_{}/target_masks".format(mode, cls_im)] = [wandb.Image(im) for im in separate_masks(targets.float().cpu())[cls_im]]
 
                 if args.hipe_cells > 0:
-                    hipe, hipe_masks = hierarchical_perturbation(net, inputs[0].unsqueeze(0).detach(), target=hipe_target, batch_size=1, num_cells=args.hipe_cells, perturbation_type='fade')
-                    results["{}/hipe".format(mode)] = wandb.Image(hipe.cpu())
-                    results["{}/hipe_masks".format(mode)] = hipe_masks
+                    for cls_im in range(1, 5):
+                        print('HiPe for class {}'.format(cls_im))
+                        hipe, depth_hipe, hipe_masks = hierarchical_perturbation(net, inputs[0].unsqueeze(0).detach(), target=cls_im, batch_size=1, num_cells=args.hipe_cells, perturbation_type='fade')
+                        results["{}/cls_{}/hipe".format(mode, cls_im)] = wandb.Image(hipe.cpu())
+                        results["{}/cls_{}/hipe_masks".format(mode, cls_im)] = hipe_masks
+                        for ds in range(depth_hipe.shape[0]):
+                            results["{}/cls_{}/hipe_depth_{}".format(mode, cls_im, ds)] = wandb.Image(depth_hipe.cpu()[ds])
 
             wandb.log(results)
 
@@ -446,26 +342,39 @@ def run_epochs(net, train_loader, eval_loader, cls_criterion, seg_criterion, num
             print('Saving model...')
             torch.save(net.state_dict(), path)
             with torch.no_grad():
-                run_epochs(net, None, eval_loader, cls_criterion, seg_criterion, 1, None, train=False, save_freq=args.save_freq)
+                run_epochs(net, None, eval_loader, seg_criterion, 1, None, train=False, save_freq=args.save_freq)
 
     return
 
 
-dataset = lc_seg_tiles_mc(slides=args.slides)
+samples = pd.read_csv('sample_paths.csv').sample(frac=args.subset / 100, random_state=0).reset_index(drop=True)
+wandb.log({'samples': len(samples)})
 
-if args.downsample:
-    upsampling = 1
-else:
-    upsampling = 8
+train_size = int(0.8 * len(samples))
+val_test_size = len(samples) - train_size
+val_size = int(0.5 * val_test_size)
 
-ap = dict(
-        pooling='avg',  # one of 'avg', 'max'
-        classes=1,  # define number of output labels
-        )
+print('{} training samples, {} validation samples...'.format(train_size, val_size))
 
-net = eval(args.model)(encoder_name=args.encoder, in_channels=1, classes=5, aux_params=ap)
+all_dataset = lc_data(samples, augment=False)
 
-cls_criterion = eval(args.cls_lf)
+if args.stats:
+    data_loader = torch.utils.data.DataLoader(all_dataset, batch_size=1, shuffle=True, worker_init_fn=np.random.seed(0), num_workers=0)
+
+    print(get_stats(data_loader))
+    exit()
+
+train_dataset = lc_data(samples[:train_size], augment=True)
+val_dataset = lc_data(samples[train_size:train_size+val_size], augment=False)
+test_dataset = lc_data(samples[train_size+val_size:], augment=False)
+
+train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, worker_init_fn=np.random.seed(0), num_workers=0)
+eval_loader = torch.utils.data.DataLoader(val_dataset, batch_size=1, shuffle=True, worker_init_fn=np.random.seed(0), num_workers=0)
+test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=1, shuffle=True, worker_init_fn=np.random.seed(0), num_workers=0)
+
+
+net = eval(args.model)(encoder_name=args.encoder, in_channels=1, classes=5)
+
 seg_criterion = eval(args.seg_lf)
 
 if torch.cuda.device_count() > 1:
@@ -473,28 +382,6 @@ if torch.cuda.device_count() > 1:
     net = nn.DataParallel(net)
 
 num_epochs = args.epochs
-wandb.log({'samples': len(dataset)})
-
-train_size = int(0.8 * len(dataset))
-val_test_size = len(dataset) - train_size
-val_size = int(0.5 * val_test_size)
-test_size = val_test_size - val_size
-
-train_data, val_test_data = torch.utils.data.random_split(dataset, [train_size, val_test_size])
-val_data, test_data = torch.utils.data.random_split(val_test_data, [val_size, test_size])
-
-train_loader = torch.utils.data.DataLoader(train_data, batch_size=args.batch_size, shuffle=True, worker_init_fn=np.random.seed(0), num_workers=0)
-eval_loader = torch.utils.data.DataLoader(val_data, batch_size=args.batch_size, shuffle=True, worker_init_fn=np.random.seed(0), num_workers=0)
-test_loader = torch.utils.data.DataLoader(test_data, batch_size=args.batch_size, shuffle=True, worker_init_fn=np.random.seed(0), num_workers=0)
-
-"""
-print('Getting stats...')
-MEAN, STD, MIN, MAX = get_stats(train_loader)
-wandb.log({"train_mean": MEAN, "train_std": STD, "train_min": MIN, "train_max": MAX})
-print(MEAN, STD, MIN, MAX)
-"""
-
-print('{} training samples, {} validation samples...'.format(train_size, val_size))
 
 if args.load is not '':
     net.load_state_dict(torch.load('params/' + args.load + ".pth", map_location=torch.device(device)))
@@ -504,12 +391,12 @@ wandb.watch(net)
 
 if args.train:
     print('Training network...')
-    run_epochs(net, train_loader, eval_loader, cls_criterion, seg_criterion, num_epochs, 'params/' + params_id + '.pth', save_freq=args.save_freq)
+    run_epochs(net, train_loader, eval_loader, seg_criterion, num_epochs, 'params/' + params_id + '.pth', save_freq=args.save_freq)
 
 elif args.test:
     with torch.no_grad():
-        run_epochs(net, None, eval_loader, cls_criterion, seg_criterion, 1, None, train=False, save_freq=args.save_freq)
+        run_epochs(net, None, test_loader, seg_criterion, 1, None, train=False, save_freq=args.save_freq)
 
 else:
     with torch.no_grad():
-        run_epochs(net, None, eval_loader, cls_criterion, seg_criterion, 1, None, train=False, save_freq=args.save_freq)
+        run_epochs(net, None, eval_loader, seg_criterion, 1, None, train=False, save_freq=args.save_freq)

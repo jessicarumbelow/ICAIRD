@@ -19,8 +19,6 @@ import torchvision
 import random
 import torchvision.transforms.functional as TF
 import segmentation_models_pytorch as smp
-from hipe import hierarchical_perturbation
-from hipe import blur
 
 # torch.set_printoptions(precision=4, linewidth=300)
 # np.set_printoptions(precision=4, linewidth=300)
@@ -45,19 +43,21 @@ def set_seed():
 set_seed()
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--lr', type=float, default=1)
-parser.add_argument('--conv_thresh', type=float, default=0)
+parser.add_argument('--lr', type=float, default=0.001)
 parser.add_argument('--load', default='blooming-puddle-89')
 parser.add_argument('--note', default='')
-parser.add_argument('--cls', type=int, default=0)
 parser.add_argument('--lr_decay', type=float, default=0.5)
 parser.add_argument('--epochs', type=int, default=1)
 parser.add_argument('--save_freq', default=100, type=int)
+parser.add_argument('--cpu', default=False, action='store_true')
+
+
+def normalise(x):
+    return (x - x.min()) / max(x.max() - x.min(), 0.0001)
 
 args = parser.parse_args()
 
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
+device = torch.device('cuda' if torch.cuda.is_available() and not args.cpu else 'cpu')
 os.environ["WANDB_SILENT"] = "true"
 
 proj = "cell_gen"
@@ -80,7 +80,7 @@ net.load_state_dict(torch.load('params/' + args.load + ".pth", map_location=torc
 
 net.to(device)
 
-if torch.cuda.device_count() > 1:
+if (torch.cuda.device_count() > 1) and not args.cpu:
     print("Using", torch.cuda.device_count(), "GPUs.")
     net = nn.DataParallel(net)
 
@@ -89,47 +89,56 @@ net.eval()
 
 lr = args.lr
 
-target_img = torch.ones((1, 1, dim, dim), device=device)
+target_imgs = torch.zeros((5, dim, dim)).to(device)
 
+cxs = [0, 0, 0, 128, 128]
+cys = [0, 0, 128, 0, 128]
+
+for i in range(1, 5):
+    target_imgs[i, cxs[i]:cxs[i] + 128, cys[i]: cys[i] + 128] = 1
+
+target_imgs[0] = torch.abs(torch.sum(target_imgs, dim=0) - 1)
+mask = torch.abs(target_imgs[0] - 1)
 last_loss = 999999
-cls = args.cls
-if cls == 0:
-    target_img = torch.zeros_like(target_img)
 
-wandb.log({'target_output': wandb.Image(target_img[0].cpu())})
+for c in range(5):
+    wandb.log({'{}_target_output'.format(c): wandb.Image(target_imgs[c].cpu())})
 
-input_img = torch.nn.Parameter(torch.zeros((1, 1, dim, dim), device=device))
-
+input_img = torch.nn.Parameter(torch.zeros((1, dim, dim)).to(device))
 optimizer = optim.Adam([input_img], lr=lr)
 
-for e in range(args.epochs):
-    output_imgs, _ = net(input_img)
+first_input = input_img.clone()
 
-    loss = F.mse_loss(output_imgs[0, cls], target_img)
+for e in range(args.epochs):
+    diff_img = input_img - first_input
+
+    output_imgs = net(input_img.unsqueeze(0))
+    output_imgs = F.sigmoid(output_imgs)
+    loss = F.mse_loss(output_imgs[0], target_imgs, input_img, args.reg)
 
     if e % args.save_freq == 0:
 
+        for c in range(5):
+            wandb.log({'{}_model_output'.format(c): wandb.Image(output_imgs[0, c].cpu())})
         wandb.log({
-            "model_output":   wandb.Image(output_imgs[0, cls].cpu()),
-            "optim_input":    wandb.Image(input_img[0].cpu()),
-            "loss":           loss,
-            "epoch":          e,
-            "lr".format(cls): lr
+            "optim_input": wandb.Image(input_img[0].cpu()),
+            "diff_input":  wandb.Image(diff_img[0].cpu()),
+            "loss":        loss,
+            "epoch":       e,
+            "lr":          lr
             })
 
-    optimizer.zero_grad()
+        if (loss == 0) or (loss == last_loss):
+            break
+
     loss.backward()
     optimizer.step()
     optimizer.zero_grad()
-    print(e, loss)
+    print(e, loss.item(), lr)
 
-    if loss > last_loss:
+    if loss >= last_loss:
         lr *= args.lr_decay
         optimizer = optim.Adam([input_img], lr=lr)
-        print('Learning rate: ', lr)
         last_loss = 999999
-
-    if loss == 0:
-        break
 
     last_loss = loss
