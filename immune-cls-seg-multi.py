@@ -261,8 +261,8 @@ def run_epochs(net, train_loader, eval_loader, seg_criterion, num_epochs, path, 
         total_loss = 0
         total_scores = np.zeros((5, 5))
 
-        if args.lr_decay:
-            lr = args.lr / (epoch + 1)
+        if args.lr_decay and (epoch % 2 == 0):
+            lr = args.lr / ((epoch/2)+1)
 
         else:
             lr = args.lr
@@ -353,11 +353,9 @@ val_size = int(0.5 * val_test_size)
 
 print('{} training samples, {} validation samples...'.format(train_size, val_size))
 
-all_dataset = lc_data(samples, augment=False)
-
 if args.stats:
+    all_dataset = lc_data(samples, augment=False)
     data_loader = torch.utils.data.DataLoader(all_dataset, batch_size=1, shuffle=True, worker_init_fn=np.random.seed(0), num_workers=0)
-
     print(get_stats(data_loader))
     exit()
 
@@ -365,9 +363,9 @@ train_dataset = lc_data(samples[:train_size], augment=args.augment)
 val_dataset = lc_data(samples[train_size:train_size + val_size], augment=False)
 test_dataset = lc_data(samples[train_size + val_size:], augment=False)
 
-train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, worker_init_fn=np.random.seed(0), num_workers=0)
-eval_loader = torch.utils.data.DataLoader(val_dataset, batch_size=1, shuffle=True, worker_init_fn=np.random.seed(0), num_workers=0)
-test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=1, shuffle=True, worker_init_fn=np.random.seed(0), num_workers=0)
+train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, worker_init_fn=np.random.seed(0), num_workers=0, drop_last=True)
+eval_loader = torch.utils.data.DataLoader(val_dataset, batch_size=args.batch_size, shuffle=True, worker_init_fn=np.random.seed(0), num_workers=0, drop_last=True)
+test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=args.batch_size, shuffle=True, worker_init_fn=np.random.seed(0), num_workers=0, drop_last=True)
 
 net = eval(args.model)(encoder_name=args.encoder, in_channels=1, classes=5)
 
