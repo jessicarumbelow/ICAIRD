@@ -59,7 +59,6 @@ parser.add_argument('--model', default='smp.Unet')
 parser.add_argument('--encoder', default='resnet34')
 parser.add_argument('--seg_lf', default='focal_loss')
 parser.add_argument('--hipe_cells', type=int, default=4)
-parser.add_argument('--slides', default=None)
 parser.add_argument('--augment', default=False, action='store_true')
 parser.add_argument('--lr_decay', default=True, action='store_true')
 parser.add_argument('--stats', default=False, action='store_true')
@@ -312,7 +311,7 @@ def run_epochs(net, train_loader, eval_loader, seg_criterion, num_epochs, path, 
 
             scores_list = ['IOU', 'acc', 'prec', 'rec', 'f1']
 
-            batch_scores = scores(outputs, targets)
+            batch_scores = scores(output_masks, targets)
             total_scores += batch_scores
             for cls_num in range(5):
                 results.update(dict(zip(['{}/cls_{}/'.format(mode, cls_num) + s for s in scores_list], total_scores[cls_num] / (i + 1))))
@@ -364,7 +363,7 @@ if args.stats:
     print(get_stats(data_loader))
     exit()
 
-train_dataset = lc_data(samples[:train_size], augment=True)
+train_dataset = lc_data(samples[:train_size], augment=args.augment)
 val_dataset = lc_data(samples[train_size:train_size+val_size], augment=False)
 test_dataset = lc_data(samples[train_size+val_size:], augment=False)
 
