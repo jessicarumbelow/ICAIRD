@@ -58,10 +58,14 @@ parser.add_argument('--note', default='')
 parser.add_argument('--model', default='smp.Unet')
 parser.add_argument('--encoder', default='resnet34')
 parser.add_argument('--seg_lf', default='focal_loss')
+parser.add_argument('--large', default=False, action='store_true')
 parser.add_argument('--hipe_cells', type=int, default=4)
 parser.add_argument('--augment', default=False, action='store_true')
-parser.add_argument('--lr_decay', default=True, action='store_true')
+parser.add_argument('--lr_decay', default=False, action='store_true')
 parser.add_argument('--stats', default=False, action='store_true')
+parser.add_argument('--centroids', default=False, action='store_true')
+parser.add_argument('--weighted_loss', default=False, action='store_true')
+parser.add_argument('--classes', type=int, default=-1)
 
 args = parser.parse_args()
 
@@ -77,6 +81,9 @@ params_id = wandb.run.name
 print(params_id, args)
 
 dim = 256
+
+CLASS_LIST = ['0', 'CD8', 'CD3', 'CD20', 'CD8: CD3', 'CD20: CD8', 'CD20: CD8: CD3', 'CD20: CD3'][:args.classes]
+print(CLASS_LIST)
 
 
 ################################################ HELPERS
@@ -96,8 +103,8 @@ def get_stats(loader):
     var = 0
     minimum = 9999999
     maximum = 0
-    cls_count = torch.zeros(5)
-    cls_covg = torch.zeros(5)
+    cls_count = torch.zeros(len(CLASS_LIST))
+    cls_covg = torch.zeros(len(CLASS_LIST))
     for i, data in enumerate(loader):
         print(i, '/', len(loader))
         input, target = data
@@ -114,8 +121,8 @@ def get_stats(loader):
     mean /= len(loader.dataset)
     std /= len(loader.dataset)
     var /= len(loader.dataset)
-    cls_count = {'{}_count'.format(i): cls_count[i] / len(loader.dataset) for i in range(5)}
-    cls_covg = {'{}_covg'.format(i): cls_covg[i] / len(loader.dataset) for i in range(5)}
+    cls_count = {'{}_count'.format(i): cls_count[i] / len(loader.dataset) for i in range(len(CLASS_LIST))}
+    cls_covg = {'{}_covg'.format(i): cls_covg[i] / len(loader.dataset) for i in range(len(CLASS_LIST))}
 
     stats = {'minimum': minimum, 'maximum': maximum, 'mean': mean, 'std': std, 'var': var}
     stats.update(cls_count)
@@ -126,7 +133,7 @@ def get_stats(loader):
 def separate_masks(masks):
     with torch.no_grad():
         sep_masks = []
-        for cls_num in range(5):
+        for cls_num in range(len(CLASS_LIST)):
             mask = masks.clone()
             mask[mask != cls_num] = -1
             mask[mask > -1] = 0
@@ -139,14 +146,18 @@ def separate_masks(masks):
 
 
 def scores(o, t):
-    score_arr = np.zeros((5, 5))
+    score_arr = np.zeros((len(CLASS_LIST), 5))
 
-    for cls_num in range(5):
+    for cls_num in range(len(CLASS_LIST)):
         output = o[:, cls_num]
         target = t.float()
+        flat_ix = target.reshape(-1) > -1
         target[target != cls_num] = -1
         target[target > -1] = 0
         target += 1
+
+        output = torch.masked_select(output.reshape(-1), flat_ix)
+        target = torch.masked_select(target.reshape(-1), flat_ix)
 
         with torch.no_grad():
             tp = torch.sum(target * output)
@@ -156,23 +167,77 @@ def scores(o, t):
 
             p = tp / (tp + fp + 0.0001)
             r = tp / (tp + fn + 0.0001)
-
             f1 = 2 * p * r / (p + r + 0.0001)
-            f1 = torch.where(torch.isnan(f1), torch.zeros_like(f1), f1)
             acc = (tp + tn) / (tp + tn + fp + fn)
-
             iou = tp / ((torch.sum(output + target) - tp) + 0.0001)
+
         score_arr[cls_num] = np.array([iou.item(), acc.item(), p.item(), r.item(), f1.item()])
 
     return score_arr
 
 
+def f1_loss(o, t):
+    f1 = torch.zeros(1, device=device)
+
+    for cls_num in range(len(CLASS_LIST)):
+        output = o[:, cls_num]
+        target = t.float()
+        target[target != cls_num] = -1
+        target[target > -1] = 0
+        target += 1
+
+        tp = torch.sum(target * output)
+        fp = torch.sum((1 - target) * output)
+        fn = torch.sum(target * (1 - output))
+
+        p = tp / (tp + fp + 0.0001)
+        r = tp / (tp + fn + 0.0001)
+
+        f1 += 2 * p * r / (p + r + 0.0001)
+
+    return 1 - f1 / len(CLASS_LIST)
+
+
+def get_class_weights(targets):
+    if args.weighted_loss:
+        weights = torch.zeros(len(CLASS_LIST), device=device)
+        for cls_num in range(len(CLASS_LIST)):
+            weights[cls_num] += 1 - targets[targets == cls_num].reshape(-1).shape[0] / targets.reshape(-1).shape[0]
+    else:
+        weights = torch.ones(len(CLASS_LIST), device=device)
+    return weights
+
+
 def focal_loss(outputs, targets, alpha=0.8, gamma=2):
+    CE = F.cross_entropy(outputs, targets, reduction='mean', weight=get_class_weights(targets.detach()))
+    CE_EXP = torch.exp(-CE)
+    focal_loss = alpha * (1 - CE_EXP) ** gamma * CE
+
+    return focal_loss
+
+def focal_loss(outputs, targets, alpha=0.8, gamma=2):
+
     CE = F.cross_entropy(outputs, targets, reduction='mean')
     CE_EXP = torch.exp(-CE)
     focal_loss = alpha * (1 - CE_EXP) ** gamma * CE
 
     return focal_loss
+
+
+def centroid_loss(outputs, coord_img):
+    coord_img_z = coord_img.clone()
+    coord_img_z[coord_img_z >= 0] = 1
+    coord_img_z[coord_img_z < 0] = 0
+    outputs_z = outputs * coord_img_z.unsqueeze(1)
+    return focal_loss(outputs_z, coord_img)
+
+
+def centroid_scores(outputs, coord_img):
+    coord_img_z = coord_img.clone()
+    coord_img_z[coord_img_z >= 0] = 1
+    coord_img_z[coord_img_z < 0] = 0
+    outputs_z = outputs * coord_img_z.unsqueeze(1)
+    return scores(outputs_z, coord_img)
 
 
 ################################################ SETTING UP DATASET
@@ -181,34 +246,54 @@ def focal_loss(outputs, targets, alpha=0.8, gamma=2):
 if not os.path.exists('sample_paths.csv'):
     print('Building data paths...')
 
-    data = glob.glob("data/new_exported_tiles/*/*")
+    data = glob.glob("data/exported_tiles/*/*")
 
     samples = {}
     for d in data:
         dn = d.split(']')[0] + ']'
-        print(dn)
         sample = samples[dn] if dn in samples else {}
         if '-labelled' in d:
             sample['Mask'] = d
-            for s in range(5):
-                sample['Class_{}'.format(s)] = 1 if s in np.array(Image.open(d)) else 0
+            coords = d.split('[')[-1].split(']')[0].split(',')
+            x, y, dimx, dimy = (int(c.split('=')[-1]) for c in coords)
+
+            slide_centroids = pd.read_csv(glob.glob("data/new_exported_coords/{}*".format(dn.split('/')[2]))[0], sep='\t')
+
+            slide_centroids['Centroid X µm'] = slide_centroids['Centroid X µm'] / 0.227
+            slide_centroids['Centroid Y µm'] = slide_centroids['Centroid Y µm'] / 0.227
+
+            centroids = slide_centroids.copy()
+            centroids['Class'] = centroids['Class'].fillna('0')
+            centroids = centroids[centroids['Centroid X µm'] >= x]
+            centroids = centroids[centroids['Centroid X µm'] < x + dimx]
+            centroids = centroids[centroids['Centroid Y µm'] >= y]
+            centroids = centroids[centroids['Centroid Y µm'] < y + dimy]
+
+            for c in range(len(CLASS_LIST)):
+                sample[CLASS_LIST[c]] = 1 if c in np.array(Image.open(d)) else 0
+                coords = list(zip(centroids[centroids['Class'] == CLASS_LIST[c]]['Centroid X µm'].values - x, centroids[centroids['Class'] == CLASS_LIST[c]]['Centroid Y µm'].values - y))
+                sample['{}_coords'.format(CLASS_LIST[c])] = coords
         else:
             sample['Img'] = d
         sample['Slide'] = dn.split('/')[2]
         samples[dn] = sample
 
     samples = pd.DataFrame.from_dict(samples, orient='index')
-    samples = samples.dropna()
     samples.to_csv('sample_paths.csv', index=False)
     print('\n', len(samples))
-    print('DONE!')
+    print('Finished building dataset paths.')
+    exit()
 
 
 class lc_data(Dataset):
 
     def __init__(self, samples, augment=False):
 
-        self.samples = samples
+        self.samples = pd.DataFrame()
+        for c in range(1, len(CLASS_LIST)):
+            self.samples = pd.concat([self.samples, samples[samples[CLASS_LIST[c]] == 1]])
+        self.samples.drop_duplicates(subset=['Img'], inplace=True)
+
         self.augment = augment
 
         if augment:
@@ -234,23 +319,35 @@ class lc_data(Dataset):
         img = np.array(Image.open(s['Img']))[:dim, :dim]
         img = np.pad(img, ((0, dim - img.shape[0]), (0, dim - img.shape[1])), 'minimum')
 
+        cr = 1
+        coords_img = np.ones_like(img) * - 1
+        for c in range(len(CLASS_LIST)):
+            class_coords = eval(s['{}_coords'.format(CLASS_LIST[c])])
+            for x, y in class_coords:
+                coords_img[int(y), int(x)] = c
+
         target = np.array(Image.open(s['Mask']))[:dim, :dim]
+
         target = np.pad(target, ((0, dim - target.shape[0]), (0, dim - target.shape[1])), 'minimum')
 
-        img, target = torch.Tensor(img.astype(np.float32)).unsqueeze(0), torch.Tensor(target.astype(np.float32)).unsqueeze(0)
+        img, target, coords_img = torch.Tensor(img.astype(np.float32)).unsqueeze(0), torch.Tensor(target.astype(np.float32)).unsqueeze(0), torch.Tensor(coords_img.astype(np.float32)).unsqueeze(0)
+
+        target[target >= len(CLASS_LIST)] = 0
 
         if self.augment:
             mir, rot = s['Aug']
             img = TF.rotate(img, rot)
             target = TF.rotate(target, rot)
+            coords_img = TF.rotate(coords_img, rot)
 
             if mir == 1:
                 img = TF.hflip(img)
                 target = TF.hflip(target)
+                coords_img = TF.hflip(coords_img)
 
         img = normalise(img)
 
-        return img, target[0].long()
+        return img, target[0].long(), coords_img[0].long()
 
 
 ################################################ TRAINING
@@ -259,10 +356,16 @@ class lc_data(Dataset):
 def run_epochs(net, train_loader, eval_loader, seg_criterion, num_epochs, path, save_freq=100, train=True):
     for epoch in range(num_epochs):
         total_loss = 0
-        total_scores = np.zeros((5, 5))
+        total_scores = np.zeros((len(CLASS_LIST), 5))
+        scores_list = ['IOU', 'acc', 'prec', 'rec', 'f1']
 
-        if args.lr_decay and (epoch % 2 == 0):
-            lr = args.lr / ((epoch/2)+1)
+        if args.centroids:
+            total_scores = np.zeros((len(CLASS_LIST), 10))
+            scores_list.extend(['centroid_{}'.format(s) for s in scores_list])
+
+        if args.lr_decay:
+            print('Decaying learning rate...')
+            lr = args.lr / (epoch + 1)
 
         else:
             lr = args.lr
@@ -285,73 +388,86 @@ def run_epochs(net, train_loader, eval_loader, seg_criterion, num_epochs, path, 
 
         for i, data in enumerate(dataloader):
 
-            inputs, targets = data
-            inputs, targets = inputs.to(device), targets.to(device)
+            inputs, targets, coords = data
+            inputs, targets, coords = inputs.to(device), targets.to(device), coords.to(device)
 
             outputs = net(inputs)
-            loss = focal_loss(outputs, targets)
+            loss = seg_criterion(outputs, targets)
 
             if train:
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
 
-            output_masks = F.softmax(outputs, dim=1)
-
             total_loss += loss.item()
 
-            print('({}) Epoch: {}/{} Batch: {}/{} Batch Loss {}'.format(mode, epoch, num_epochs, i, len(dataloader), loss.item()))
+            print('({}) Epoch: {}/{} Batch: {}/{} Batch Loss {} LR {}'.format(mode, epoch, num_epochs, i, len(dataloader), loss.item(), lr))
 
             results = {
                 '{}/batch'.format(mode): i, '{}/epoch'.format(mode): epoch,
                 '{}/loss'.format(mode):  loss.item(), '{}/mean_loss'.format(mode): total_loss / (i + 1), '{}/lr'.format(mode): lr
                 }
 
-            scores_list = ['IOU', 'acc', 'prec', 'rec', 'f1']
+            outputs = torch.sigmoid(outputs)
 
-            batch_scores = scores(output_masks, targets)
+            if args.centroids:
+                batch_scores = np.zeros_like(total_scores)
+                batch_scores[:, :5] = scores(outputs, targets)
+                batch_scores[:, 5:] = centroid_scores(outputs, coords)
+            else:
+                batch_scores = scores(outputs, targets)
+
             total_scores += batch_scores
-            for cls_num in range(5):
-                results.update(dict(zip(['{}/cls_{}/'.format(mode, cls_num) + s for s in scores_list], total_scores[cls_num] / (i + 1))))
-                results.update(dict(zip(['{}/cls_{}/batch_'.format(mode, cls_num) + s for s in scores_list], batch_scores[cls_num])))
 
-            if (i + 1) % save_freq == 0:
+            print(scores_list)
+            print(batch_scores)
 
-                results["{}/inputs".format(mode)] = [wandb.Image(im) for im in inputs.cpu()]
-                results["{}/orig_targets".format(mode)] = [wandb.Image(im) for im in targets.float().cpu()]
-
-                for cls_im in range(5):
-                    results["{}/cls_{}/output".format(mode, cls_im)] = [wandb.Image(im) for im in output_masks[:, cls_im].cpu()]
-                    results["{}/cls_{}/target_masks".format(mode, cls_im)] = [wandb.Image(im) for im in separate_masks(targets.float().cpu())[cls_im]]
-
-                if args.hipe_cells > 0:
-                    for cls_im in range(1, 5):
-                        print('HiPe for class {}'.format(cls_im))
-                        hipe, depth_hipe, hipe_masks = hierarchical_perturbation(net, inputs[0].unsqueeze(0).detach(), target=cls_im, batch_size=1, num_cells=args.hipe_cells, perturbation_type='fade')
-                        results["{}/cls_{}/hipe".format(mode, cls_im)] = wandb.Image(hipe.cpu())
-                        results["{}/cls_{}/hipe_masks".format(mode, cls_im)] = hipe_masks
-                        for ds in range(depth_hipe.shape[0]):
-                            results["{}/cls_{}/hipe_depth_{}".format(mode, cls_im, ds)] = wandb.Image(depth_hipe.cpu()[ds])
+            for cls_num in range(len(CLASS_LIST)):
+                results.update(dict(zip(['{}/{}/'.format(mode, CLASS_LIST[cls_num]) + s for s in scores_list], total_scores[cls_num] / (i + 1))))
+                results.update(dict(zip(['{}/{}/batch_'.format(mode, CLASS_LIST[cls_num]) + s for s in scores_list], batch_scores[cls_num])))
 
             wandb.log(results)
 
-        if train:
-            print('Saving model...')
-            torch.save(net.state_dict(), path)
-            with torch.no_grad():
-                run_epochs(net, None, eval_loader, seg_criterion, 1, None, train=False, save_freq=args.save_freq)
+            if (i + 1) % save_freq == 0:
+                results["{}/inputs".format(mode)] = [wandb.Image(im) for im in inputs.cpu()]
+                results["{}/orig_targets".format(mode)] = [wandb.Image(im) for im in targets.float().cpu()]
+                results["{}/coord_targets".format(mode)] = [wandb.Image(im) for im in coords.float().cpu()]
+
+                for cls_im in range(len(CLASS_LIST)):
+                    results["{}/{}/output".format(mode, CLASS_LIST[cls_im])] = [wandb.Image(im) for im in outputs[:, cls_im].cpu()]
+                    results["{}/{}/target_masks".format(mode, CLASS_LIST[cls_im])] = [wandb.Image(im) for im in separate_masks(targets.float().cpu())[cls_im]]
+
+                if args.hipe_cells > 0:
+                    for cls_im in range(1, len(CLASS_LIST)):
+                        print('HiPe for {}'.format(CLASS_LIST[cls_im]))
+                        hipe, depth_hipe, hipe_masks = hierarchical_perturbation(net, inputs[0].unsqueeze(0).detach(), target=cls_im, batch_size=1, num_cells=args.hipe_cells, perturbation_type='fade')
+                        results["{}/{}/hipe".format(mode, CLASS_LIST[cls_im])] = wandb.Image(hipe.cpu())
+                        results["{}/{}/hipe_masks".format(mode, CLASS_LIST[cls_im])] = hipe_masks
+                        for ds in range(depth_hipe.shape[0]):
+                            results["{}/{}/hipe_depth_{}".format(mode, CLASS_LIST[cls_im], ds)] = wandb.Image(depth_hipe.cpu()[ds])
+
+                wandb.log(results)
+
+                if train:
+                    print('Saving model...')
+                    torch.save(net.state_dict(), path)
+                    with torch.no_grad():
+                        run_epochs(net, None, eval_loader, seg_criterion, 1, None, train=False, save_freq=args.save_freq)
+                    net.train()
 
     return
 
 
-samples = pd.read_csv('sample_paths.csv').sample(frac=args.subset / 100, random_state=0).reset_index(drop=True)
+if args.large:
+    samples = pd.read_csv('large_sample_paths.csv').sample(frac=args.subset / 100, random_state=0).reset_index(drop=True)
+else:
+    samples = pd.read_csv('sample_paths.csv').sample(frac=args.subset / 100, random_state=0).reset_index(drop=True)
+
 wandb.log({'samples': len(samples)})
 
 train_size = int(0.8 * len(samples))
 val_test_size = len(samples) - train_size
 val_size = int(0.5 * val_test_size)
-
-print('{} training samples, {} validation samples...'.format(train_size, val_size))
 
 if args.stats:
     all_dataset = lc_data(samples, augment=False)
@@ -363,11 +479,13 @@ train_dataset = lc_data(samples[:train_size], augment=args.augment)
 val_dataset = lc_data(samples[train_size:train_size + val_size], augment=False)
 test_dataset = lc_data(samples[train_size + val_size:], augment=False)
 
-train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, worker_init_fn=np.random.seed(0), num_workers=0, drop_last=True)
-eval_loader = torch.utils.data.DataLoader(val_dataset, batch_size=args.batch_size, shuffle=True, worker_init_fn=np.random.seed(0), num_workers=0, drop_last=True)
-test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=args.batch_size, shuffle=True, worker_init_fn=np.random.seed(0), num_workers=0, drop_last=True)
+print('{} training samples, {} validation samples, {} test samples...'.format(len(train_dataset), len(val_dataset), len(test_dataset)))
 
-net = eval(args.model)(encoder_name=args.encoder, in_channels=1, classes=5)
+train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, worker_init_fn=np.random.seed(0), num_workers=0, drop_last=False)
+eval_loader = torch.utils.data.DataLoader(val_dataset, batch_size=args.batch_size, shuffle=True, worker_init_fn=np.random.seed(0), num_workers=0, drop_last=False)
+test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=args.batch_size, shuffle=True, worker_init_fn=np.random.seed(0), num_workers=0, drop_last=False)
+
+net = eval(args.model)(encoder_name=args.encoder, in_channels=1, classes=len(CLASS_LIST))
 
 seg_criterion = eval(args.seg_lf)
 
@@ -378,7 +496,8 @@ if torch.cuda.device_count() > 1:
 num_epochs = args.epochs
 
 if args.load is not '':
-    net.load_state_dict(torch.load('params/' + args.load + ".pth", map_location=torch.device(device)))
+    state_dict = torch.load('params/' + args.load + ".pth", map_location=torch.device(device))
+    net.load_state_dict(state_dict)
 
 net.to(device)
 wandb.watch(net)
