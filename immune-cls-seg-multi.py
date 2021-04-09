@@ -65,7 +65,10 @@ parser.add_argument('--lr_decay', default=False, action='store_true')
 parser.add_argument('--stats', default=False, action='store_true')
 parser.add_argument('--centroids', default=False, action='store_true')
 parser.add_argument('--weighted_loss', default=False, action='store_true')
+parser.add_argument('--dynamic_lr', default=False, action='store_true')
 parser.add_argument('--classes', type=int, default=-1)
+parser.add_argument('--num_wb_img', type=int, default=1)
+parser.add_argument('--start_epoch', type=int, default=0)
 
 args = parser.parse_args()
 
@@ -75,7 +78,7 @@ os.environ["WANDB_SILENT"] = "true"
 
 proj = "immune_seg_multi"
 
-wandb.init(project=proj, entity="jessicamarycooper", config=args)
+run = wandb.init(project=proj, entity="jessicamarycooper", config=args)
 args = wandb.config
 params_id = wandb.run.name
 print(params_id, args)
@@ -146,7 +149,7 @@ def separate_masks(masks):
 
 
 def scores(o, t):
-    score_arr = np.zeros((len(CLASS_LIST), 5))
+    score_arr = np.zeros((len(CLASS_LIST), 3))
 
     for cls_num in range(len(CLASS_LIST)):
         output = o[:, cls_num]
@@ -168,10 +171,10 @@ def scores(o, t):
             p = tp / (tp + fp + 0.0001)
             r = tp / (tp + fn + 0.0001)
             f1 = 2 * p * r / (p + r + 0.0001)
-            acc = (tp + tn) / (tp + tn + fp + fn)
-            iou = tp / ((torch.sum(output + target) - tp) + 0.0001)
+            # acc = (tp + tn) / (tp + tn + fp + fn)
+            # iou = tp / ((torch.sum(output + target) - tp) + 0.0001)
 
-        score_arr[cls_num] = np.array([iou.item(), acc.item(), p.item(), r.item(), f1.item()])
+        score_arr[cls_num] = np.array([p.item(), r.item(), f1.item()])
 
     return score_arr
 
@@ -210,14 +213,6 @@ def get_class_weights(targets):
 
 def focal_loss(outputs, targets, alpha=0.8, gamma=2):
     CE = F.cross_entropy(outputs, targets, reduction='mean', weight=get_class_weights(targets.detach()))
-    CE_EXP = torch.exp(-CE)
-    focal_loss = alpha * (1 - CE_EXP) ** gamma * CE
-
-    return focal_loss
-
-def focal_loss(outputs, targets, alpha=0.8, gamma=2):
-
-    CE = F.cross_entropy(outputs, targets, reduction='mean')
     CE_EXP = torch.exp(-CE)
     focal_loss = alpha * (1 - CE_EXP) ** gamma * CE
 
@@ -319,7 +314,6 @@ class lc_data(Dataset):
         img = np.array(Image.open(s['Img']))[:dim, :dim]
         img = np.pad(img, ((0, dim - img.shape[0]), (0, dim - img.shape[1])), 'minimum')
 
-        cr = 1
         coords_img = np.ones_like(img) * - 1
         for c in range(len(CLASS_LIST)):
             class_coords = eval(s['{}_coords'.format(CLASS_LIST[c])])
@@ -354,16 +348,17 @@ class lc_data(Dataset):
 
 
 def run_epochs(net, train_loader, eval_loader, seg_criterion, num_epochs, path, save_freq=100, train=True):
-    for epoch in range(num_epochs):
+    for epoch in range(args.start_epoch, args.start_epoch + num_epochs):
         total_loss = 0
-        total_scores = np.zeros((len(CLASS_LIST), 5))
-        scores_list = ['IOU', 'acc', 'prec', 'rec', 'f1']
+        scores_list = ['prec', 'rec', 'f1']
+
+        total_scores = np.zeros((len(CLASS_LIST), len(scores_list)))
 
         if args.centroids:
-            total_scores = np.zeros((len(CLASS_LIST), 10))
+            total_scores = np.zeros((len(CLASS_LIST), len(scores_list) * 2))
             scores_list.extend(['centroid_{}'.format(s) for s in scores_list])
 
-        if args.lr_decay:
+        if args.lr_decay and epoch > 0:
             print('Decaying learning rate...')
             lr = args.lr / (epoch + 1)
 
@@ -375,7 +370,7 @@ def run_epochs(net, train_loader, eval_loader, seg_criterion, num_epochs, path, 
             mode = 'train'
             net.train()
             dataloader = train_loader
-            optimizer = optim.Adam(net.parameters(), lr=lr)
+            optimizer = optim.AdamW(net.parameters(), lr=lr)
 
         else:
             print('Evaluating...')
@@ -401,19 +396,18 @@ def run_epochs(net, train_loader, eval_loader, seg_criterion, num_epochs, path, 
 
             total_loss += loss.item()
 
-            print('({}) Epoch: {}/{} Batch: {}/{} Batch Loss {} LR {}'.format(mode, epoch, num_epochs, i, len(dataloader), loss.item(), lr))
+            print('({}) Epoch: {}/{} Batch: {}/{} Batch Loss {} LR {}'.format(mode, epoch + 1, num_epochs, i, len(dataloader), loss.item(), lr))
 
             results = {
-                '{}/batch'.format(mode): i, '{}/epoch'.format(mode): epoch,
-                '{}/loss'.format(mode):  loss.item(), '{}/mean_loss'.format(mode): total_loss / (i + 1), '{}/lr'.format(mode): lr
+                '{}/loss'.format(mode): loss.item(), '{}/mean_loss'.format(mode): total_loss / (i + 1), '{}/lr'.format(mode): lr, '{}/batch'.format(mode): i + 1, '{}/epoch'.format(mode): epoch + 1
                 }
 
-            outputs = torch.sigmoid(outputs)
+            outputs = F.softmax(outputs, dim=1)
 
             if args.centroids:
                 batch_scores = np.zeros_like(total_scores)
-                batch_scores[:, :5] = scores(outputs, targets)
-                batch_scores[:, 5:] = centroid_scores(outputs, coords)
+                batch_scores[:, :len(scores_list) // 2] = scores(outputs, targets)
+                batch_scores[:, len(scores_list) // 2:] = centroid_scores(outputs, coords)
             else:
                 batch_scores = scores(outputs, targets)
 
@@ -424,18 +418,17 @@ def run_epochs(net, train_loader, eval_loader, seg_criterion, num_epochs, path, 
 
             for cls_num in range(len(CLASS_LIST)):
                 results.update(dict(zip(['{}/{}/'.format(mode, CLASS_LIST[cls_num]) + s for s in scores_list], total_scores[cls_num] / (i + 1))))
-                results.update(dict(zip(['{}/{}/batch_'.format(mode, CLASS_LIST[cls_num]) + s for s in scores_list], batch_scores[cls_num])))
 
             wandb.log(results)
 
             if (i + 1) % save_freq == 0:
-                results["{}/inputs".format(mode)] = [wandb.Image(im) for im in inputs.cpu()]
-                results["{}/orig_targets".format(mode)] = [wandb.Image(im) for im in targets.float().cpu()]
-                results["{}/coord_targets".format(mode)] = [wandb.Image(im) for im in coords.float().cpu()]
+                results["{}/inputs".format(mode)] = [wandb.Image(im) for im in inputs.cpu()[:args.num_wb_img]]
+                results["{}/orig_targets".format(mode)] = [wandb.Image(im) for im in targets[:args.num_wb_img].float().cpu()]
+                results["{}/coord_targets".format(mode)] = [wandb.Image(im) for im in coords[:args.num_wb_img].float().cpu()]
 
                 for cls_im in range(len(CLASS_LIST)):
-                    results["{}/{}/output".format(mode, CLASS_LIST[cls_im])] = [wandb.Image(im) for im in outputs[:, cls_im].cpu()]
-                    results["{}/{}/target_masks".format(mode, CLASS_LIST[cls_im])] = [wandb.Image(im) for im in separate_masks(targets.float().cpu())[cls_im]]
+                    results["{}/{}/output".format(mode, CLASS_LIST[cls_im])] = [wandb.Image(im) for im in outputs[:args.num_wb_img, cls_im].cpu()]
+                    results["{}/{}/target_masks".format(mode, CLASS_LIST[cls_im])] = [wandb.Image(im) for im in separate_masks(targets[:args.num_wb_img].float().cpu())[cls_im]]
 
                 if args.hipe_cells > 0:
                     for cls_im in range(1, len(CLASS_LIST)):
@@ -449,8 +442,8 @@ def run_epochs(net, train_loader, eval_loader, seg_criterion, num_epochs, path, 
                 wandb.log(results)
 
                 if train:
-                    print('Saving model...')
                     torch.save(net.state_dict(), path)
+                    print('Saving model...')
                     with torch.no_grad():
                         run_epochs(net, None, eval_loader, seg_criterion, 1, None, train=False, save_freq=args.save_freq)
                     net.train()
@@ -513,3 +506,7 @@ elif args.test:
 else:
     with torch.no_grad():
         run_epochs(net, None, eval_loader, seg_criterion, 1, None, train=False, save_freq=args.save_freq)
+
+print(params_id)
+run.finish()
+exit()
