@@ -77,7 +77,6 @@ def hierarchical_perturbation(model,
                     mask = torch.zeros((1, 1, num_cells, num_cells), device=dev)
                     mask[:, :, y1:y2, x1:x2] = 1.0
                     local_saliency = F.interpolate(mask, (input_y_dim, input_x_dim), mode=interp_mode) * saliency
-                    masked_output = F.interpolate(mask, (input_y_dim, input_x_dim), mode=interp_mode) * output
 
                     if depth > 1:
                         local_saliency = torch.max(local_saliency)
@@ -85,8 +84,7 @@ def hierarchical_perturbation(model,
                         local_saliency = 0
 
                     # If salience of region is greater than the average, generate higher resolution mask
-                    #if local_saliency >= threshold:
-                    if torch.max(masked_output) > 0.5:
+                    if local_saliency >= threshold:
 
                         masks_list.append(abs(mask - 1))
 
@@ -124,7 +122,7 @@ def hierarchical_perturbation(model,
                 masks = F.interpolate(masks, (input_y_dim, input_x_dim), mode=interp_mode)
 
                 if perturbation_type == 'fade':
-                    perturbed_outputs = torch.relu(output - model(input)[:, target])
+                    perturbed_outputs = torch.relu(output - model(input * masks)[:, target])
                 else:
                     perturbed_outputs = torch.relu(output - model(b_imgs)[:, target])
 

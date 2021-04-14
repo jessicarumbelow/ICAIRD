@@ -44,7 +44,7 @@ set_seed()
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--lr', type=float, default=0.001)
-parser.add_argument('--load', default='blooming-puddle-89')
+parser.add_argument('--load', default='logical-smoke-626')
 parser.add_argument('--note', default='')
 parser.add_argument('--lr_decay', type=float, default=0.5)
 parser.add_argument('--epochs', type=int, default=1)
@@ -54,6 +54,7 @@ parser.add_argument('--cpu', default=False, action='store_true')
 
 def normalise(x):
     return (x - x.min()) / max(x.max() - x.min(), 0.0001)
+
 
 args = parser.parse_args()
 
@@ -69,12 +70,8 @@ print(params_id, args)
 
 dim = 256
 
-ap = dict(
-        pooling='avg',  # one of 'avg', 'max'
-        classes=1,  # define number of output labels
-        )
-
-net = smp.Unet(encoder_name='resnet34', in_channels=1, classes=5, aux_params=ap)
+net = smp.Unet(encoder_name=
+               'efficientnet-b0', in_channels=1, classes=4)
 
 net.load_state_dict(torch.load('params/' + args.load + ".pth", map_location=torch.device(device)))
 
@@ -89,19 +86,19 @@ net.eval()
 
 lr = args.lr
 
-target_imgs = torch.zeros((5, dim, dim)).to(device)
+target_imgs = torch.zeros((4, dim, dim)).to(device)
 
 cxs = [0, 0, 0, 128, 128]
 cys = [0, 0, 128, 0, 128]
 
-for i in range(1, 5):
+for i in range(4):
     target_imgs[i, cxs[i]:cxs[i] + 128, cys[i]: cys[i] + 128] = 1
 
 target_imgs[0] = torch.abs(torch.sum(target_imgs, dim=0) - 1)
 mask = torch.abs(target_imgs[0] - 1)
 last_loss = 999999
 
-for c in range(5):
+for c in range(4):
     wandb.log({'{}_target_output'.format(c): wandb.Image(target_imgs[c].cpu())})
 
 input_img = torch.nn.Parameter(torch.zeros((1, dim, dim)).to(device))
@@ -118,7 +115,7 @@ for e in range(args.epochs):
 
     if e % args.save_freq == 0:
 
-        for c in range(5):
+        for c in range(4):
             wandb.log({'{}_model_output'.format(c): wandb.Image(output_imgs[0, c].cpu())})
         wandb.log({
             "optim_input": wandb.Image(input_img[0].cpu()),
