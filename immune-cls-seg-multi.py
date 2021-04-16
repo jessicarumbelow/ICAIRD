@@ -66,7 +66,6 @@ parser.add_argument('--stats', default=False, action='store_true')
 parser.add_argument('--centroids', default=False, action='store_true')
 parser.add_argument('--weighted_loss', default=False, action='store_true')
 parser.add_argument('--dynamic_lr', default=False, action='store_true')
-parser.add_argument('--classes', type=int, default=5)
 parser.add_argument('--num_wb_img', type=int, default=1)
 parser.add_argument('--start_epoch', type=int, default=0)
 parser.add_argument('--cr', type=int, default=0)
@@ -86,7 +85,7 @@ print(params_id, args)
 
 dim = 256
 
-CLASS_LIST = ['0', 'CD8', 'CD3', 'CD20', 'CD8: CD3', 'CD20: CD8', 'CD20: CD8: CD3', 'CD20: CD3'][:args.classes]
+CLASS_LIST = ['0', 'CD8', 'CD3', 'CD20', 'CD8: CD3', 'CD20: CD8', 'CD20: CD8: CD3', 'CD20: CD3']
 print(CLASS_LIST)
 
 
@@ -107,8 +106,8 @@ def get_stats(loader):
     var = 0
     minimum = 9999999
     maximum = 0
-    cls_count = torch.zeros(len(CLASS_LIST))
-    cls_covg = torch.zeros(len(CLASS_LIST))
+    cls_count = torch.zeros(4)
+    cls_covg = torch.zeros(4)
     for i, data in enumerate(loader):
         print(i, '/', len(loader))
         input, target = data
@@ -125,8 +124,8 @@ def get_stats(loader):
     mean /= len(loader.dataset)
     std /= len(loader.dataset)
     var /= len(loader.dataset)
-    cls_count = {'{}_count'.format(i): cls_count[i] / len(loader.dataset) for i in range(len(CLASS_LIST))}
-    cls_covg = {'{}_covg'.format(i): cls_covg[i] / len(loader.dataset) for i in range(len(CLASS_LIST))}
+    cls_count = {'{}_count'.format(i): cls_count[i] / len(loader.dataset) for i in range(4)}
+    cls_covg = {'{}_covg'.format(i): cls_covg[i] / len(loader.dataset) for i in range(4)}
 
     stats = {'minimum': minimum, 'maximum': maximum, 'mean': mean, 'std': std, 'var': var}
     stats.update(cls_count)
@@ -138,9 +137,9 @@ def get_stats(loader):
 
 
 def scores(o, t):
-    score_arr = np.zeros((len(CLASS_LIST), 3))
+    score_arr = np.zeros((4, 3))
 
-    for cls_num in range(len(CLASS_LIST)):
+    for cls_num in range(4):
         output = o[:, cls_num]
         target = t[:, cls_num]
 
@@ -168,7 +167,7 @@ def scores(o, t):
 def f1_loss(o, t):
     f1 = torch.zeros(1, device=device)
 
-    for cls_num in range(len(CLASS_LIST)):
+    for cls_num in range(4):
         output = o[:, cls_num]
         target = t[:, cls_num]
         target[target != cls_num] = -1
@@ -184,37 +183,37 @@ def f1_loss(o, t):
 
         f1 += 2 * p * r / (p + r + 0.0001)
 
-    return 1 - f1 / len(CLASS_LIST)
+    return 1 - f1 / 4
 
 
 def get_class_weights(targets):
     if args.weighted_loss:
-        weights = torch.zeros(len(CLASS_LIST), device=device)
-        for cls_num in range(len(CLASS_LIST)):
+        weights = torch.zeros(4, device=device)
+        for cls_num in range(4):
             weights[cls_num] += 1 - torch.sum(targets[:, cls_num]) / torch.sum(targets)
     else:
-        weights = torch.ones(len(CLASS_LIST), device=device)
+        weights = torch.ones(4, device=device)
     return weights
 
 
 def bce_focal_loss(outputs, targets, alpha=0.8, gamma=2):
     loss = torch.zeros(1, device=device)
 
-    for c in range(len(CLASS_LIST)):
+    for c in range(4):
         bce = F.binary_cross_entropy(outputs[:, c], targets[:, c])
         bce_exp = torch.exp(-bce)
         loss += alpha * (1 - bce_exp) ** gamma * bce
 
-    return loss / len(CLASS_LIST)
+    return loss / 4
 
 
 def bce_loss(outputs, targets):
     bce = torch.zeros(1, device=device)
 
-    for c in range(len(CLASS_LIST)):
+    for c in range(4):
         bce += F.binary_cross_entropy(outputs[:, c], targets[:, c])
 
-    return (bce / len(CLASS_LIST))  # * get_class_weights(targets)
+    return (bce / 4)  # * get_class_weights(targets)
 
 
 def mse_loss(outputs, targets):
@@ -223,10 +222,10 @@ def mse_loss(outputs, targets):
 
 def get_centroids(outputs, coord_img):
     mask = (torch.sum(coord_img, dim=1) > -1)
-    out = torch.zeros(len(CLASS_LIST), mask.reshape(-1).shape[0], device=device)
-    coord = torch.zeros(len(CLASS_LIST), mask.reshape(-1).shape[0], device=device)
+    out = torch.zeros(4, mask.reshape(-1).shape[0], device=device)
+    coord = torch.zeros(4, mask.reshape(-1).shape[0], device=device)
 
-    for c in range(len(CLASS_LIST)):
+    for c in range(4):
         out[c] = outputs[:, c][mask]
         coord[c] = outputs[:, c][mask]
 
@@ -277,7 +276,7 @@ if not os.path.exists('sample_paths.csv'):
             centroids = centroids[centroids['Centroid Y µm'] >= y]
             centroids = centroids[centroids['Centroid Y µm'] < y + dimy]
 
-            for c in range(len(CLASS_LIST)):
+            for c in range(4):
                 sample[CLASS_LIST[c]] = 1 if c in np.array(Image.open(d)) else 0
                 coords = list(zip(centroids[centroids['Class'] == CLASS_LIST[c]]['Centroid X µm'].values - x, centroids[centroids['Class'] == CLASS_LIST[c]]['Centroid Y µm'].values - y))
                 sample['{}_coords'.format(CLASS_LIST[c])] = coords
@@ -298,7 +297,7 @@ class lc_data(Dataset):
     def __init__(self, samples, augment=False):
 
         self.samples = pd.DataFrame()
-        for c in range(1, len(CLASS_LIST)):
+        for c in range(1, 4):
             self.samples = pd.concat([self.samples, samples[samples[CLASS_LIST[c]] == 1]])
         self.samples.drop_duplicates(subset=['Img'], inplace=True)
 
@@ -329,7 +328,7 @@ class lc_data(Dataset):
 
         coord = np.ones_like(img) * - 1
         cr = args.cr
-        for c in range(len(CLASS_LIST)):
+        for c in range(4):
             class_coords = eval(s['{}_coords'.format(CLASS_LIST[c])])
             for x, y in class_coords:
                 x1, x2 = max(0, int(x - cr)), min(dim, int(x + cr) + 1)
@@ -361,14 +360,23 @@ class lc_data(Dataset):
             targets[c] = (targets[c] == c).float()
             coords[c] = (coord == c).float()
 
-        targets[2] += targets[1] + targets[4]
-        coords[2] += coords[1] + targets[4]
+        # Coallate CD8 cells
+        targets[1] += targets[4] + targets[5] + targets[6]
+        coords[1] += coords[4] + coords[5] + coords[6]
+
+        # Coallate CD3 cells
+        targets[2] += targets[1] + targets[4] + targets[6] + targets[7]
+        coords[2] += coords[1] + coords[4] + coords[6] + coords[7]
+
+        # Coallate CD20 cells
+        targets[3] += targets[5] + targets[6] + targets[7]
+        coords[3] += coords[5] + coords[6] + coords[7]
 
         targets[targets > 1] = 1
         coords[coords > 1] = 1
 
         img = normalise(img)
-        return img, targets, coords
+        return img, targets[:4], coords[:4]
 
 
 ################################################ TRAINING
@@ -379,10 +387,10 @@ def run_epochs(net, train_loader, eval_loader, num_epochs, path, save_freq=100, 
         total_loss = 0
         scores_list = ['prec', 'rec', 'f1']
 
-        total_scores = np.zeros((len(CLASS_LIST), len(scores_list)))
+        total_scores = np.zeros((4, len(scores_list)))
 
         if args.centroids:
-            total_scores = np.zeros((len(CLASS_LIST), len(scores_list) * 2))
+            total_scores = np.zeros((4, len(scores_list) * 2))
             scores_list.extend(['centroid_{}'.format(s) for s in scores_list])
 
         if args.lr_decay and epoch > 0:
@@ -444,7 +452,7 @@ def run_epochs(net, train_loader, eval_loader, num_epochs, path, save_freq=100, 
             print(scores_list)
             print(batch_scores)
 
-            for cls_num in range(len(CLASS_LIST)):
+            for cls_num in range(4):
                 results.update(dict(zip(['{}/{}/'.format(mode, CLASS_LIST[cls_num]) + s for s in scores_list], total_scores[cls_num] / (i + 1))))
 
             wandb.log(results)
@@ -452,12 +460,12 @@ def run_epochs(net, train_loader, eval_loader, num_epochs, path, save_freq=100, 
             if (i + 1) % save_freq == 0:
                 results["{}/inputs".format(mode)] = [wandb.Image(im) for im in inputs.cpu()[:args.num_wb_img]]
 
-                for cls_im in range(len(CLASS_LIST)):
+                for cls_im in range(4):
                     results["{}/{}/output".format(mode, CLASS_LIST[cls_im])] = [wandb.Image(im) for im in outputs[:args.num_wb_img, cls_im].cpu()]
                     results["{}/{}/targets".format(mode, CLASS_LIST[cls_im])] = [wandb.Image(im) for im in targets[:args.num_wb_img, cls_im].cpu()]
                     results["{}/{}/coord_targets".format(mode, CLASS_LIST[cls_im])] = [wandb.Image(im) for im in coords[:args.num_wb_img, cls_im].cpu()]
                 if args.hipe_cells > 0:
-                    for cls_im in range(1, len(CLASS_LIST)):
+                    for cls_im in range(1, 4):
                         print('HiPe for {}'.format(CLASS_LIST[cls_im]))
                         hipe, depth_hipe, hipe_masks = hierarchical_perturbation(net, inputs[0].unsqueeze(0).detach(), target=cls_im, batch_size=1, num_cells=args.hipe_cells, perturbation_type='fade')
                         if torch.sum(hipe) > 0:
@@ -505,7 +513,7 @@ train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_
 eval_loader = torch.utils.data.DataLoader(val_dataset, batch_size=args.batch_size, shuffle=True, worker_init_fn=np.random.seed(0), num_workers=0, drop_last=False)
 test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=args.batch_size, shuffle=True, worker_init_fn=np.random.seed(0), num_workers=0, drop_last=False)
 
-net = eval(args.model)(encoder_name=args.encoder, in_channels=1, classes=len(CLASS_LIST))
+net = eval(args.model)(encoder_name=args.encoder, in_channels=1, classes=4)
 
 if torch.cuda.device_count() > 1:
     print("Using", torch.cuda.device_count(), "GPUs.")
