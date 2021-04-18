@@ -101,12 +101,13 @@ def equalise(img):
 
 
 def get_stats(loader):
+
     mean = 0
     std = 0
     var = 0
     minimum = 9999999
     maximum = 0
-    cls_count = torch.zeros(4)
+    cls_count = dict(zip(CLASS_LIST, [0] * len(CLASS_LIST)))
     cls_covg = torch.zeros(4)
     for i, data in enumerate(loader):
         print(i, '/', len(loader))
@@ -116,10 +117,11 @@ def get_stats(loader):
         var += input.var()
         maximum = max(input.max(), maximum)
         minimum = min(input.min(), minimum)
+
         classes = torch.unique(target.reshape(-1)).to(torch.int64)
         cls_count[classes] += 1
         for c in range(5):
-            cls_covg[c] += len(target[target == c].reshape(-1)) / len(target.reshape(-1))
+            cls_covg[c] += torch.sum(target[c]) / len(target[c].reshape(-1))
 
     mean /= len(loader.dataset)
     std /= len(loader.dataset)
@@ -142,11 +144,6 @@ def scores(o, t):
     for cls_num in range(4):
         output = o[:, cls_num]
         target = t[:, cls_num]
-
-        flat_ix = target.reshape(-1) > -1
-
-        output = output.reshape(-1)[flat_ix]
-        target = target.reshape(-1)[flat_ix]
 
         with torch.no_grad():
             tp = torch.sum(target * output)
@@ -197,23 +194,17 @@ def get_class_weights(targets):
 
 
 def bce_focal_loss(outputs, targets, alpha=0.8, gamma=2):
-    loss = torch.zeros(1, device=device)
+    bce = F.binary_cross_entropy(outputs, targets)
+    bce_exp = torch.exp(-bce)
+    loss = alpha * (1 - bce_exp) ** gamma * bce
 
-    for c in range(4):
-        bce = F.binary_cross_entropy(outputs[:, c], targets[:, c])
-        bce_exp = torch.exp(-bce)
-        loss += alpha * (1 - bce_exp) ** gamma * bce
-
-    return loss / 4
+    return loss
 
 
 def bce_loss(outputs, targets):
-    bce = torch.zeros(1, device=device)
+    bce = F.binary_cross_entropy(outputs, targets)
 
-    for c in range(4):
-        bce += F.binary_cross_entropy(outputs[:, c], targets[:, c])
-
-    return (bce / 4)  # * get_class_weights(targets)
+    return bce  # * get_class_weights(targets)
 
 
 def mse_loss(outputs, targets):
@@ -221,15 +212,10 @@ def mse_loss(outputs, targets):
 
 
 def get_centroids(outputs, coord_img):
-    mask = (torch.sum(coord_img, dim=1) > -1)
-    out = torch.zeros(4, mask.reshape(-1).shape[0], device=device)
-    coord = torch.zeros(4, mask.reshape(-1).shape[0], device=device)
-
-    for c in range(4):
-        out[c] = outputs[:, c][mask]
-        coord[c] = outputs[:, c][mask]
-
-    return out.unsqueeze(0), coord.unsqueeze(0)
+    mask = (torch.sum(coord_img, dim=1) > 0)
+    outputs = torch.cat([outputs[:, c][mask].unsqueeze(0) for c in range(4)]).unsqueeze(0)
+    coord_img = torch.cat([coord_img[:, c][mask].unsqueeze(0) for c in range(4)]).unsqueeze(0)
+    return outputs, coord_img
 
 
 def centroid_loss(outputs, coord_img):
