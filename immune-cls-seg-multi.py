@@ -47,6 +47,7 @@ def set_seed():
     torch.cuda.manual_seed(0)
     torch.cuda.manual_seed_all(0)
 
+
 set_seed()
 
 parser = argparse.ArgumentParser()
@@ -62,7 +63,7 @@ parser.add_argument('--load', default='')
 parser.add_argument('--note', default='')
 parser.add_argument('--model', default='smp.Unet')
 parser.add_argument('--encoder', default='resnet34')
-parser.add_argument('--seg_lf', default='bce_loss')
+parser.add_argument('--seg_lf', default='ce_loss')
 parser.add_argument('--large', default=False, action='store_true')
 parser.add_argument('--hipe', default=False, action='store_true')
 parser.add_argument('--augment', default=False, action='store_true')
@@ -151,9 +152,10 @@ def separate_masks(masks):
     with torch.no_grad():
         sep_masks = []
         for cls_num in range(len(CLASS_LIST)):
-            sep_masks.append((masks == cls_num).float())
-        masks = torch.cat(sep_masks)
-    return masks
+            m = (masks == cls_num).float()
+            sep_masks.append(m)
+
+    return sep_masks
 
 
 ################################################ METRICS
@@ -403,14 +405,13 @@ class lc_data(Dataset):
             target, coord = targets[:args.num_classes], coords[:args.num_classes]
 
         else:
-
             target[target >= args.num_classes] = 0
             coord[coord >= args.num_classes] = 0
-            target, coord = target.squeeze(0).long(), coord.squeeze(0)
+            target, coord = target[0], coord[0]
 
         img = normalise(img)
 
-        return img, target, coord
+        return img, target.long(), coord.long()
 
 
 ################################################ TRAINING
@@ -494,17 +495,25 @@ def run_epochs(net, train_loader, eval_loader, num_epochs, path, save_freq=100, 
             wandb.log(results)
 
             if (i + 1) % save_freq == 0:
-                results["{}/inputs".format(mode)] = [wandb.Image(im) for im in inputs.cpu()[:args.num_wb_img]]
+                results["{}/inputs".format(mode)] = [wandb.Image(im) for im in inputs[:args.num_wb_img].cpu()]
+
+                if args.strict_classes:
+
+                    results["{}/targets".format(mode)] = [wandb.Image(im) for im in targets[:args.num_wb_img].float().cpu()]
+                    results["{}/coord_targets".format(mode)] = [wandb.Image(im) for im in coords[:args.num_wb_img].float().cpu()]
 
                 for cls_im in range(args.num_classes):
                     results["{}/{}/output".format(mode, CLASS_LIST[cls_im])] = [wandb.Image(im) for im in outputs[:args.num_wb_img, cls_im].cpu()]
-                    if args.strict_classes:
-                        results["{}/{}/targets".format(mode, CLASS_LIST[cls_im])] = [wandb.Image(separate_masks(im)) for im in targets[:args.num_wb_img].cpu()]
-                        results["{}/{}/coord_targets".format(mode, CLASS_LIST[cls_im])] = [wandb.Image(separate_masks(im)) for im in coords[:args.num_wb_img].cpu()]
-                    else:
 
+                    if args.strict_classes:
+
+                        results["{}/{}/targets".format(mode, CLASS_LIST[cls_im])] = [wandb.Image(separate_masks(im)[cls_im]) for im in targets[:args.num_wb_img].cpu()]
+                        results["{}/{}/coord_targets".format(mode, CLASS_LIST[cls_im])] = [wandb.Image(separate_masks(im)[cls_im]) for im in coords[:args.num_wb_img].cpu()]
+
+                    else:
                         results["{}/{}/targets".format(mode, CLASS_LIST[cls_im])] = [wandb.Image(im) for im in targets[:args.num_wb_img, cls_im].cpu()]
                         results["{}/{}/coord_targets".format(mode, CLASS_LIST[cls_im])] = [wandb.Image(im) for im in coords[:args.num_wb_img, cls_im].cpu()]
+
                 if args.hipe:
                     for cls_im in range(1, args.num_classes):
                         print('HiPe for {}'.format(CLASS_LIST[cls_im]))
