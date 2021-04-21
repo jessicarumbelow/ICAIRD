@@ -44,14 +44,8 @@ def set_seed():
     np.random.seed(0)
     random.seed(0)
     torch.manual_seed(0)
-    # torch.set_deterministic(True)
     torch.cuda.manual_seed(0)
     torch.cuda.manual_seed_all(0)
-    torch.backends.cudnn.enabled = False
-    torch.backends.cudnn.benchmark = False
-    torch.backends.cudnn.deterministic = True
-    os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
-
 
 set_seed()
 
@@ -82,6 +76,7 @@ parser.add_argument('--start_epoch', type=int, default=0)
 parser.add_argument('--cr', type=int, default=1)
 parser.add_argument('--num_classes', type=int, default=4)
 parser.add_argument('--interim_val', default=True, action='store_true')
+parser.add_argument('--overlap38', default=False, action='store_true')
 
 args = parser.parse_args()
 
@@ -157,7 +152,8 @@ def separate_masks(masks):
         sep_masks = []
         for cls_num in range(len(CLASS_LIST)):
             sep_masks.append((masks == cls_num).float())
-    return sep_masks
+        masks = torch.cat(sep_masks)
+    return masks
 
 
 ################################################ METRICS
@@ -397,6 +393,10 @@ class lc_data(Dataset):
             targets[3] += targets[5] + targets[6] + targets[7]
             coords[3] += coords[5] + coords[6] + coords[7]
 
+            if args.overlap38:
+                # All CD8 cells are also CD3 cells
+                targets[2] += targets[1]
+
             targets[targets > 1] = 1
             coords[coords > 1] = 1
 
@@ -423,8 +423,6 @@ def run_epochs(net, train_loader, eval_loader, num_epochs, path, save_freq=100, 
     for epoch in range(args.start_epoch, args.start_epoch + num_epochs):
         total_loss = 0
         scores_list = ['prec', 'rec', 'f1']
-
-        total_scores = np.zeros((args.num_classes, len(scores_list)))
 
         total_scores = np.zeros((args.num_classes, len(scores_list) * 2))
         scores_list.extend(['centroid_{}'.format(s) for s in scores_list])
@@ -501,8 +499,8 @@ def run_epochs(net, train_loader, eval_loader, num_epochs, path, save_freq=100, 
                 for cls_im in range(args.num_classes):
                     results["{}/{}/output".format(mode, CLASS_LIST[cls_im])] = [wandb.Image(im) for im in outputs[:args.num_wb_img, cls_im].cpu()]
                     if args.strict_classes:
-                        results["{}/{}/targets".format(mode, CLASS_LIST[cls_im])] = [wandb.Image(separate_masks(im)) for im in targets[:args.num_wb_img, cls_im].cpu()]
-                        results["{}/{}/coord_targets".format(mode, CLASS_LIST[cls_im])] = [wandb.Image(separate_masks(im)) for im in coords[:args.num_wb_img, cls_im].cpu()]
+                        results["{}/{}/targets".format(mode, CLASS_LIST[cls_im])] = [wandb.Image(separate_masks(im)) for im in targets[:args.num_wb_img].cpu()]
+                        results["{}/{}/coord_targets".format(mode, CLASS_LIST[cls_im])] = [wandb.Image(separate_masks(im)) for im in coords[:args.num_wb_img].cpu()]
                     else:
 
                         results["{}/{}/targets".format(mode, CLASS_LIST[cls_im])] = [wandb.Image(im) for im in targets[:args.num_wb_img, cls_im].cpu()]
@@ -583,6 +581,5 @@ else:
     with torch.no_grad():
         run_epochs(net, None, eval_loader, 1, None, train=False, save_freq=args.save_freq)
 
-print(params_id)
 run.finish()
 exit()
