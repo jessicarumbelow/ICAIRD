@@ -76,8 +76,8 @@ parser.add_argument('--num_wb_img', type=int, default=12)
 parser.add_argument('--start_epoch', type=int, default=0)
 parser.add_argument('--cr', type=int, default=1)
 parser.add_argument('--num_classes', type=int, default=4)
-parser.add_argument('--interim_val', default=True, action='store_true')
 parser.add_argument('--overlap38', default=False, action='store_true')
+parser.add_argument('--sanity', default=False, action='store_true')
 
 args = parser.parse_args()
 
@@ -119,15 +119,17 @@ def get_stats(loader):
     class_presence = np.zeros(len(CLASS_LIST))
 
     for i, data in enumerate(loader):
-        # print(i, '/', len(loader))
+        print(i, '/', len(loader))
         input, target, coords = data
         mean += input.mean()
         std += input.std()
         var += input.var()
         maximum = max(input.max(), maximum)
         minimum = min(input.min(), minimum)
-        cc = [torch.sum(coords[:, c, :, :]).item() for c in range(len(CLASS_LIST))]
-        # print(cc)
+        if args.strict_classes:
+            cc = [torch.sum((coords == c).float()) for c in range(len(CLASS_LIST))]
+        else:
+            cc = [torch.sum(coords[:, c, :, :]).item() for c in range(len(CLASS_LIST))]
         coord_count += cc
         class_presence += (np.array(cc) > 0).astype(float)
 
@@ -196,9 +198,6 @@ def f1_loss(o, t):
             target = (t == cls_num).float()
         else:
             target = t[:, cls_num]
-        target[target != cls_num] = -1
-        target[target > -1] = 0
-        target += 1
 
         tp = torch.sum(target * output)
         fp = torch.sum((1 - target) * output)
@@ -228,7 +227,7 @@ def ce_focal_loss(outputs, targets, alpha=0.8, gamma=2):
         ce_exp = torch.exp(-ce)
         loss = alpha * (1 - ce_exp) ** gamma * ce
     else:
-        bce = F.binary_cross_entropy(outputs, targets)
+        bce = F.binary_cross_entropy_with_logits(outputs.float(), targets.float())
         bce_exp = torch.exp(-bce)
         loss = alpha * (1 - bce_exp) ** gamma * bce
     return loss
@@ -237,7 +236,7 @@ def ce_focal_loss(outputs, targets, alpha=0.8, gamma=2):
 def ce_loss(outputs, targets):
     if args.strict_classes:
         return F.cross_entropy(outputs, targets)
-    return F.binary_cross_entropy(outputs, targets)
+    return F.binary_cross_entropy_with_logits(outputs.float(), targets.float())
 
 
 def mse_loss(outputs, targets):
@@ -323,6 +322,7 @@ class lc_data(Dataset):
 
         self.samples = samples.fillna('[]')
         self.augment = augment
+        self.sanity_img, self.sanity_target, self.sanity_coord = None, None, None
 
         if augment:
             mirror = [0, 1]
@@ -363,6 +363,9 @@ class lc_data(Dataset):
 
         img, target, coord = torch.Tensor(img.astype(np.float32)).unsqueeze(0), torch.Tensor(target.astype(np.float32)).unsqueeze(0), torch.Tensor(coord.astype(np.float32)).unsqueeze(0)
 
+        if (len(torch.unique(target)) == args.num_classes) and (self.sanity_img is None):
+            self.sanity_img, self.sanity_target, self.sanity_coord = img, target, coord
+
         if self.augment:
             mir, rot = s['Aug']
             img = TF.rotate(img, rot)
@@ -373,6 +376,9 @@ class lc_data(Dataset):
                 img = TF.hflip(img)
                 target = TF.hflip(target)
                 coord = TF.hflip(coord)
+
+        if args.sanity and self.sanity_img is not None:
+            img, target, coord = self.sanity_img, self.sanity_target, self.sanity_coord
 
         if not args.strict_classes:
 
@@ -453,10 +459,7 @@ def run_epochs(net, train_loader, eval_loader, num_epochs, path, save_freq=100, 
             inputs, targets, coords = data
             inputs, targets, coords = inputs.to(device), targets.to(device), coords.to(device)
 
-            if args.strict_classes:
-                outputs = torch.softmax(net(inputs), dim=1)
-            else:
-                outputs = torch.sigmoid(net(inputs))
+            outputs = net(inputs)
 
             if 'centroid' in args.seg_lf:
                 loss = eval(args.seg_lf)(outputs, coords)
@@ -469,6 +472,11 @@ def run_epochs(net, train_loader, eval_loader, num_epochs, path, save_freq=100, 
                 optimizer.step()
 
             total_loss += loss.item()
+
+            if args.strict_classes:
+                outputs = torch.softmax(outputs, dim=1)
+            else:
+                outputs = torch.sigmoid(outputs)
 
             print('{} ({}) Epoch: {}/{} Batch: {}/{} Batch Loss {} LR {}'.format(params_id, mode, epoch + 1, num_epochs, i, len(dataloader), loss.item(), lr))
 
@@ -503,16 +511,16 @@ def run_epochs(net, train_loader, eval_loader, num_epochs, path, save_freq=100, 
                     results["{}/coord_targets".format(mode)] = [wandb.Image(im) for im in coords[:args.num_wb_img].float().cpu()]
 
                 for cls_im in range(args.num_classes):
-                    results["{}/{}/output".format(mode, CLASS_LIST[cls_im])] = [wandb.Image(im) for im in outputs[:args.num_wb_img, cls_im].cpu()]
+                    results["{}/{}/output".format(mode, CLASS_LIST[cls_im])] = [wandb.Image(im) for im in outputs[:args.num_wb_img, cls_im].float().cpu()]
 
                     if args.strict_classes:
 
-                        results["{}/{}/targets".format(mode, CLASS_LIST[cls_im])] = [wandb.Image(separate_masks(im)[cls_im]) for im in targets[:args.num_wb_img].cpu()]
-                        results["{}/{}/coord_targets".format(mode, CLASS_LIST[cls_im])] = [wandb.Image(separate_masks(im)[cls_im]) for im in coords[:args.num_wb_img].cpu()]
+                        results["{}/{}/targets".format(mode, CLASS_LIST[cls_im])] = [wandb.Image(separate_masks(im)[cls_im]) for im in targets[:args.num_wb_img].float().cpu()]
+                        results["{}/{}/coord_targets".format(mode, CLASS_LIST[cls_im])] = [wandb.Image(separate_masks(im)[cls_im]) for im in coords[:args.num_wb_img].float().cpu()]
 
                     else:
-                        results["{}/{}/targets".format(mode, CLASS_LIST[cls_im])] = [wandb.Image(im) for im in targets[:args.num_wb_img, cls_im].cpu()]
-                        results["{}/{}/coord_targets".format(mode, CLASS_LIST[cls_im])] = [wandb.Image(im) for im in coords[:args.num_wb_img, cls_im].cpu()]
+                        results["{}/{}/targets".format(mode, CLASS_LIST[cls_im])] = [wandb.Image(im) for im in targets[:args.num_wb_img, cls_im].float().cpu()]
+                        results["{}/{}/coord_targets".format(mode, CLASS_LIST[cls_im])] = [wandb.Image(im) for im in coords[:args.num_wb_img, cls_im].float().cpu()]
 
                 if args.hipe:
                     for cls_im in range(1, args.num_classes):
@@ -526,7 +534,7 @@ def run_epochs(net, train_loader, eval_loader, num_epochs, path, save_freq=100, 
 
                 wandb.log(results)
 
-                if train and args.interim_val:
+                if train:
                     torch.save(net.state_dict(), path)
                     print('Saving model...')
                     with torch.no_grad():
