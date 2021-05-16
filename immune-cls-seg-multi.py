@@ -23,6 +23,7 @@ import segmentation_models_pytorch as smp
 from hipe import hierarchical_perturbation
 from torchvision.utils import save_image
 from skimage.draw import disk
+from PIL import Image
 
 torch.set_printoptions(precision=4, linewidth=300)
 np.set_printoptions(precision=4, linewidth=300)
@@ -51,7 +52,7 @@ def set_seed():
 set_seed()
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--batch_size', type=int, default=48)
+parser.add_argument('--batch_size', type=int, default=32)
 parser.add_argument('--epochs', type=int, default=100)
 parser.add_argument('--lr', type=float, default=0.001)
 parser.add_argument('--conv_thresh', type=float, default=0)
@@ -64,20 +65,20 @@ parser.add_argument('--note', default='')
 parser.add_argument('--model', default='smp.Unet')
 parser.add_argument('--encoder', default='resnet34')
 parser.add_argument('--seg_lf', default='ce_loss')
-parser.add_argument('--large', default=False, action='store_true')
 parser.add_argument('--hipe', default=False, action='store_true')
 parser.add_argument('--augment', default=False, action='store_true')
 parser.add_argument('--lr_decay', default=False, action='store_true')
 parser.add_argument('--stats', default=False, action='store_true')
 parser.add_argument('--weighted_loss', default=False, action='store_true')
 parser.add_argument('--dynamic_lr', default=False, action='store_true')
-parser.add_argument('--strict_classes', default=False, action='store_true')
+parser.add_argument('--strict_classes', default=True, action='store_true')
 parser.add_argument('--num_wb_img', type=int, default=12)
 parser.add_argument('--start_epoch', type=int, default=0)
 parser.add_argument('--cr', type=int, default=1)
-parser.add_argument('--num_classes', type=int, default=4)
+parser.add_argument('--num_classes', type=int, default=5)
 parser.add_argument('--overlap38', default=False, action='store_true')
 parser.add_argument('--sanity', default=False, action='store_true')
+parser.add_argument('--large', default=False, action='store_true')
 
 args = parser.parse_args()
 
@@ -90,12 +91,20 @@ proj = "immune_seg_multi"
 run = wandb.init(project=proj, entity="jessicamarycooper", config=args)
 args = wandb.config
 params_id = wandb.run.name
+
+if args.load:
+    params_id = args.load
+    wandb.run.name = params_id
+
 print(params_id, args)
 
 dim = 256
 
-CLASS_LIST = ['0', 'CD8', 'CD3', 'CD20', 'CD8: CD3', 'CD20: CD3', 'CD20: CD8', 'CD20: CD8: CD3']
+CLASS_LIST = ['0', 'CD8', 'CD3', 'CD20', 'CD8: CD3']
+SLIDES = ['L135', 'L149', 'L74', 'L111', 'L93', 'L730']
+
 print(CLASS_LIST)
+print(SLIDES)
 
 
 ################################################ HELPERS
@@ -109,6 +118,16 @@ def equalise(img):
     return np.sort(img.ravel()).searchsorted(img)
 
 
+def save_im(img, name='image'):
+    img = img.cpu().numpy()[0] * 255
+    print(img.min(), img.max())
+
+    print(img.shape)
+    img = Image.fromarray(img).convert('L')
+    print(np.array(img).min(), np.array(img).max())
+    img.save(name + '.png', 'PNG', quality=100, subsampling=0)
+
+
 def get_stats(loader):
     mean = 0
     std = 0
@@ -117,10 +136,12 @@ def get_stats(loader):
     maximum = 0
     coord_count = np.zeros(len(CLASS_LIST))
     class_presence = np.zeros(len(CLASS_LIST))
+    mean_img = torch.zeros((1, dim, dim))
 
     for i, data in enumerate(loader):
         print(i, '/', len(loader))
         input, target, coords = data
+        mean_img+=input[0]
         mean += input.mean()
         std += input.std()
         var += input.var()
@@ -133,6 +154,14 @@ def get_stats(loader):
         coord_count += cc
         class_presence += (np.array(cc) > 0).astype(float)
 
+    mean_img = normalise(mean_img)
+
+    if args.large:
+        img_name = 'large_mean_img'
+    else:
+        img_name = 'mean_img'
+    save_im(mean_img, img_name)
+    wandb.log({img_name: wandb.Image(mean_img[0])})
     mean /= len(loader.dataset)
     std /= len(loader.dataset)
     var /= len(loader.dataset)
@@ -147,6 +176,8 @@ def get_stats(loader):
     stats.update(coord_count)
     stats.update(coord_perc)
     stats.update(class_presence)
+    stats['Slides'] = SLIDES
+    wandb.log(stats)
     return stats
 
 
@@ -164,7 +195,7 @@ def separate_masks(masks):
 
 
 def scores(o, t):
-    score_arr = np.zeros((args.num_classes, 3))
+    score_arr = np.zeros((args.num_classes, 5))
 
     for cls_num in range(args.num_classes):
         output = o[:, cls_num]
@@ -182,10 +213,10 @@ def scores(o, t):
             p = tp / (tp + fp + 0.0001)
             r = tp / (tp + fn + 0.0001)
             f1 = 2 * p * r / (p + r + 0.0001)
-            # acc = (tp + tn) / (tp + tn + fp + fn)
-            # iou = tp / ((torch.sum(output + target) - tp) + 0.0001)
+            acc = (tp + tn) / (tp + tn + fp + fn)
+            iou = tp / ((torch.sum(output + target) - tp) + 0.0001)
 
-        score_arr[cls_num] = np.array([p.item(), r.item(), f1.item()])
+        score_arr[cls_num] = np.array([p.item(), r.item(), f1.item(), acc.item(), iou.item()])
     return score_arr
 
 
@@ -247,8 +278,7 @@ def get_centroids(outputs, coord_img):
     if args.strict_classes:
         mask = (coord_img >= 0)
         outputs = torch.cat([outputs[:, c][mask].unsqueeze(0) for c in range(args.num_classes)]).unsqueeze(0)
-        coord_img = coord_img[mask]
-
+        coord_img = coord_img[mask].unsqueeze(0)
     else:
         mask = (torch.sum(coord_img, dim=1) > 0)
         outputs = torch.cat([outputs[:, c][mask].unsqueeze(0) for c in range(args.num_classes)]).unsqueeze(0)
@@ -275,13 +305,20 @@ def centroid_scores(outputs, coord_img):
 ################################################ SETTING UP DATASET
 
 
-if not os.path.exists('sample_paths.csv'):
+if args.large:
+    sp = 'large_sample_paths.csv'
+    tile_path = "data/new_large_exported_tiles/*/*"
+else:
+    sp = 'sample_paths.csv'
+    tile_path = "data/new_exported_tiles/*/*"
+if not os.path.exists(sp):
     print('Building data paths...')
 
-    data = glob.glob("data/new_exported_tiles/*/*")
+    data = glob.glob(tile_path)
 
     samples = {}
     for d in data:
+        print(d)
         dn = d.split(']')[0] + ']'
         sample = samples[dn] if dn in samples else {}
         if '-labelled' in d:
@@ -289,30 +326,36 @@ if not os.path.exists('sample_paths.csv'):
             coords = d.split('[')[-1].split(']')[0].split(',')
             x, y, dimx, dimy = (int(c.split('=')[-1]) for c in coords)
             slide_centroids = pd.read_csv(glob.glob("data/new_exported_coords/{}*".format(dn.split('/')[2]))[0], sep='\t')
-            class_list = slide_centroids['Class'].fillna('0').unique()
 
-            slide_centroids['Centroid X µm'] = slide_centroids['Centroid X µm'] / 0.227
-            slide_centroids['Centroid Y µm'] = slide_centroids['Centroid Y µm'] / 0.227
+            pixel_size = 0.227
+
+            slide_centroids['Centroid X µm'] = slide_centroids['Centroid X µm'] / pixel_size
+            slide_centroids['Centroid Y µm'] = slide_centroids['Centroid Y µm'] / pixel_size
 
             centroids = slide_centroids.copy()
-            centroids['Class'] = centroids['Class'].fillna('0')
             centroids = centroids[centroids['Centroid X µm'] >= x]
             centroids = centroids[centroids['Centroid X µm'] < x + dimx]
             centroids = centroids[centroids['Centroid Y µm'] >= y]
             centroids = centroids[centroids['Centroid Y µm'] < y + dimy]
+            centroids['Class'].fillna('0', inplace=True)
 
-            for c in range(len(class_list)):
-                coords = list(zip(centroids[centroids['Class'] == class_list[c]]['Centroid X µm'].values - x, centroids[centroids['Class'] == class_list[c]]['Centroid Y µm'].values - y))
-                sample[class_list[c]] = coords
+            for c in range(len(CLASS_LIST)):
+                sample[CLASS_LIST[c]] = list(
+                    zip(centroids[centroids['Class'] == CLASS_LIST[c]]['Centroid X µm'].values - x, centroids[centroids['Class'] == CLASS_LIST[c]]['Centroid Y µm'].values - y))
         else:
             sample['Img'] = d
         sample['Slide'] = dn.split('/')[2]
         samples[dn] = sample
 
     samples = pd.DataFrame.from_dict(samples, orient='index')
-    samples.to_csv('sample_paths.csv', index=False)
+    samples.fillna('[]', inplace=True)
+    if args.large:
+        samples.to_csv('large_sample_paths.csv', index=False)
+    else:
+        samples.to_csv('sample_paths.csv', index=False)
     print('\n', len(samples))
     print('Finished building dataset paths.')
+    print(samples.info())
     exit()
 
 
@@ -320,7 +363,10 @@ class lc_data(Dataset):
 
     def __init__(self, samples, augment=False):
 
-        self.samples = samples.fillna('[]')
+        # self.samples = samples[samples['CD8: CD3'] != '[]']
+        # print(len(self.samples))
+        self.samples = samples.drop_duplicates()
+
         self.augment = augment
         self.sanity_img, self.sanity_target, self.sanity_coord = None, None, None
 
@@ -351,6 +397,9 @@ class lc_data(Dataset):
         for c in range(len(CLASS_LIST)):
             class_coords = eval(s[CLASS_LIST[c]])
             for x, y in class_coords:
+                if args.large:
+                    x = x * 2
+                    y = y * 2
                 if args.cr > 1:
                     rr, cc = disk((int(y), int(x)), args.cr, shape=(dim, dim))
                     coord[rr, cc] = c
@@ -390,20 +439,17 @@ class lc_data(Dataset):
                 coords[c] = (coord == c).float()
 
             # Coallate CD8 cells
-            targets[1] += targets[4] + targets[6] + targets[7]
-            coords[1] += coords[4] + coords[6] + coords[7]
+            targets[1] += targets[4]
+            coords[1] += coords[4]
 
             # Coallate CD3 cells
-            targets[2] += targets[4] + targets[5] + targets[7]
-            coords[2] += coords[4] + coords[5] + coords[7]
-
-            # Coallate CD20 cells
-            targets[3] += targets[5] + targets[6] + targets[7]
-            coords[3] += coords[5] + coords[6] + coords[7]
+            targets[2] += targets[4]
+            coords[2] += coords[4]
 
             if args.overlap38:
                 # All CD8 cells are also CD3 cells
                 targets[2] += targets[1]
+                coords[2] += coords[1]
 
             targets[targets > 1] = 1
             coords[coords > 1] = 1
@@ -429,7 +475,7 @@ def run_epochs(net, train_loader, eval_loader, num_epochs, path, save_freq=100, 
 
     for epoch in range(args.start_epoch, args.start_epoch + num_epochs):
         total_loss = 0
-        scores_list = ['prec', 'rec', 'f1']
+        scores_list = ['prec', 'rec', 'f1', 'acc', 'iou']
 
         total_scores = np.zeros((args.num_classes, len(scores_list) * 2))
         scores_list.extend(['centroid_{}'.format(s) for s in scores_list])
@@ -476,7 +522,9 @@ def run_epochs(net, train_loader, eval_loader, num_epochs, path, save_freq=100, 
             if args.strict_classes:
                 outputs = torch.softmax(outputs, dim=1)
             else:
+
                 outputs = torch.sigmoid(outputs)
+                outputs[:, 4] = (outputs[:, 1] + outputs[:, 2]) / 2
 
             print('{} ({}) Epoch: {}/{} Batch: {}/{} Batch Loss {} LR {}'.format(params_id, mode, epoch + 1, num_epochs, i, len(dataloader), loss.item(), lr))
 
@@ -493,9 +541,9 @@ def run_epochs(net, train_loader, eval_loader, num_epochs, path, save_freq=100, 
             print(scores_list)
             print(batch_scores)
 
-            results.update({'{}/avg_f1'.format(mode): (np.sum(total_scores[:, 2]) / args.num_classes) / (i + 1)})
+            results.update({'{}/avg_f1'.format(mode): (np.sum(total_scores[1:args.num_classes, 2]) / args.num_classes) / (i + 1)})
 
-            results.update({'{}/avg_centroid_f1'.format(mode): (np.sum(total_scores[:, 5]) / args.num_classes) / (i + 1)})
+            results.update({'{}/avg_centroid_f1'.format(mode): (np.sum(total_scores[1:args.num_classes, 5]) / args.num_classes) / (i + 1)})
 
             for cls_num in range(args.num_classes):
                 results.update(dict(zip(['{}/{}/'.format(mode, CLASS_LIST[cls_num]) + s for s in scores_list], total_scores[cls_num] / (i + 1))))
@@ -549,7 +597,9 @@ if args.large:
 else:
     samples = pd.read_csv('sample_paths.csv').sample(frac=args.subset / 100, random_state=0).reset_index(drop=True)
 
-wandb.log({'samples': len(samples)})
+samples = samples[samples['Slide'].isin(SLIDES)]
+
+wandb.log({'samples': len(samples), 'slides': len(SLIDES)})
 
 train_size = int(0.8 * len(samples))
 val_test_size = len(samples) - train_size
@@ -558,7 +608,10 @@ val_size = int(0.5 * val_test_size)
 if args.stats:
     all_dataset = lc_data(samples, augment=False)
     data_loader = torch.utils.data.DataLoader(all_dataset, batch_size=1, shuffle=True, worker_init_fn=np.random.seed(0), num_workers=0)
-    print(get_stats(data_loader))
+    stats = get_stats(data_loader)
+    print(stats)
+    stats = pd.DataFrame.from_dict(stats)
+    stats.to_csv('stats.csv', mode='a+')
     exit()
 
 train_dataset = lc_data(samples[:train_size], augment=args.augment)

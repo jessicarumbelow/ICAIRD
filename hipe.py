@@ -44,7 +44,7 @@ def hierarchical_perturbation(model,
         depth_saliencies = torch.zeros((max_depth+1, 1, 1, input_y_dim, input_x_dim), device=dev)
         max_batch = batch_size
 
-        output = model(input)[:, target]
+        output = F.softmax(model(input), dim=1)[:, target]
 
         if perturbation_type == 'blur':
             pre_b_image = blur(input.clone().cpu()).to(dev)
@@ -122,9 +122,9 @@ def hierarchical_perturbation(model,
                 masks = F.interpolate(masks, (input_y_dim, input_x_dim), mode=interp_mode)
 
                 if perturbation_type == 'fade':
-                    perturbed_outputs = torch.relu(output - model(input * masks)[:, target])
+                    perturbed_outputs = torch.relu(output - F.softmax(model(input * masks), dim=1)[:, target])
                 else:
-                    perturbed_outputs = torch.relu(output - model(b_imgs)[:, target])
+                    perturbed_outputs = torch.relu(output - F.softmax(model(b_imgs), dim=1)[:, target])
 
                 sal = perturbed_outputs * torch.abs(masks.transpose(0, 1) - 1)
                 saliency += torch.sum(sal, dim=(0, 1))
