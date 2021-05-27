@@ -79,6 +79,7 @@ parser.add_argument('--num_classes', type=int, default=5)
 parser.add_argument('--overlap38', default=False, action='store_true')
 parser.add_argument('--sanity', default=False, action='store_true')
 parser.add_argument('--large', default=False, action='store_true')
+parser.add_argument('--reg_centroids', default=False, action='store_true')
 
 args = parser.parse_args()
 
@@ -289,6 +290,8 @@ def get_centroids(outputs, coord_img):
 
 def centroid_loss(outputs, coord_img):
     out, coord = get_centroids(outputs, coord_img)
+    if args.reg_centroids:
+        return ce_loss(out, coord) + torch.sum(torch.abs(outputs))
     return ce_loss(out, coord)
 
 
