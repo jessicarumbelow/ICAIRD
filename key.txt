@@ -1,3 +1,0 @@
-Stroma	1
-Immune cells	2
-Tumor	3
