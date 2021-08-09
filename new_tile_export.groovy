@@ -6,19 +6,14 @@ def imageData = getCurrentImageData()
 // Define output path (relative to project)
 def name = GeneralTools.getNameWithoutExtension(imageData.getServer().getMetadata().getName()).split('_')[0]
 
-def pathOutput = buildFilePath(PROJECT_BASE_DIR, name)
+def pathOutput = buildFilePath(PROJECT_BASE_DIR, 'new_exported_tiles',name)
 mkdirs(pathOutput)
 
-
-if False:
-
-// Define output resolution
-// double requestedPixelSize = 1
-
-// Convert to downsample
-// double downsample = requestedPixelSize / imageData.getServer().getPixelCalibration().getAveragedPixelSize()
+double avg_pixel_size = imageData.getServer().getPixelCalibration().getAveragedPixelSize()
+print avg_pixel_size
 
 double downsample = 1
+print downsample
 
 // Create an ImageServer where the pixels are derived from annotations
 def labelServer = new LabeledImageServer.Builder(imageData)
@@ -29,7 +24,10 @@ def labelServer = new LabeledImageServer.Builder(imageData)
     .addLabel('CD8', 1)      // Choose output labels (the order matters!)
     .addLabel('CD3', 2)
     .addLabel('CD20', 3)
-    .addLabel('CD3+CD8', 4)
+    .addLabel('CD8: CD3', 4)
+    .addLabel('CD20: CD3', 5)
+    .addLabel('CD20: CD8', 6)
+    .addLabel('CD20: CD8: CD3', 7)
     .multichannelOutput(false)  // If true, each label is a different channel (required for multiclass probability)
     .build()
 
@@ -43,4 +41,4 @@ new TileExporter(imageData)
     .overlap(0)                // Define overlap, in pixel units at the export resolution
     .writeTiles(pathOutput)     // Write tiles to the specified directory
 
-print 'Done!'
+print pathOutput

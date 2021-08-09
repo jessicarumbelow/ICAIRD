@@ -22,16 +22,13 @@ parameters:
     values:
       - focal_loss
     distribution: categorical
-  slides:
-    values:
-      - L111
   augment:
     values:
       - True
     distribution: categorical
   epochs:
     values:
-      - 30
+      - 50
   cls:
     values:
       - 1

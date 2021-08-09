@@ -1,0 +1,200 @@
+﻿ID,RESECTION,MYRIAD_BLOCK,DATE_RCD,IF_ID,T,T_STAGE_SCORE,N,N_STAGE_SCORE,MACRO_SIZE,TUMOUR_PATTERN,GRADE_REPORT,VASCULAR_INVASION,LYMPHATIC_INVASION,PLEURA_INVOLVED,PLEURAL_INVASION_SCORE,STAGE,STAGE_SCORE,R0,SITE,SMOKER,COMMENT,REC_SITE,DATE_?,UB_NO,OTHER_SAMPLES,BLOCK number,CALC_A,CALC_B,CALC_C,CALC_D,CASE_MP,CASE_GP,SLIDE_GP,SLIDE_MP,NODE_REMOVAL,COMMENT,DATE_RCD,DOD,OS_MTH,COD,DIED,DIED_5,CCP,EGFR,KRAS,TTF1
+1,25641/00,1c,20/12/00,,2a,2,0,0,40mm,,Well differentiated,,,No,0,1b,2,yes,,,2nd primary,Right middle lobe,04/05/04,9712/04 (T2a N0),, ,Papillary,Lepidic,Papillary,Papillary,Y,5,5,Y,,,20/12/00,08/04/2009,99.00,LC,1,0,-0.7,,,
+2,721/05,1c,13/01/05,,1a,1,0,0,15mm,,Poorly differentiated,,,yes,1,1a,1,yes,,,,,,,, ,Solid,Solid,Solid,Solid,N,3,3,N,,,13/01/05,Alive,,,0,0,-0.2,,,
+3,9370/02,1c,12/05/02,,1a,1,1,,20mm,,Poorly differentiated,Yes,Yes,No,0,2a,3,yes,Lingula left lung,Smoker,,,,,UB9415/02 completion lobeectomy and UB9616/02 lymphnode biopsy, ,Solid,Solid,Solid,Solid,N,2,2,N,Y,,12/05/02,06/04/2008,70.00,O,1,0,0.3,No mutation detected,No mutation,Positive
+4,6075/04,1f,17/03/04,,2b,2,1,,55mm,,Moderatel differentiated,No,No,yes,1,2b,4,yes,Right lower lobe,Not stated,,,,,, ,Micropapillary,Micropapillary,Micropapillary,Solid/Micropapillary,Y,4,3,Y,Y,,17/03/04,Alive,,,0,0,0.2,No mutation detected,No mutation,Positive
+5,660/03,1c,13/01/03,,2a,2,0,0,36mm,,Moderately differentiated,,,Yes,1,1b,2,yes,,,,,,,, ,Acinar,Acinar/Micropapillary,Acinar,Acinar,Y,3,3,Y,,,13/01/03,Alive,,,0,0,-0.6,,,
+6,6329/03,1c,25/03/03,,2a,2,0,0,15mm,,Moderately differentiated,,,Yes,1,1b,2,yes,,,,,,,, ,Papillary,Papillary,Papillary,Papillary,Y,4,4,Y,,,25/03/03,Alive,,,0,0,-1.7,,,
+7,2570/04,1c,03/02/04,,1b,1,1,,29mm,,"Moderately differentiated, focally poorly differentiated",No,No,No,0,2a,3,yes,Right lower lobe,Not stated,metastatic carcinoma of lung origin,Brain,01/03/06,42190/06,, ,Acinar,Acinar,Acinar,Acinar,Y,5,2,Y,Y,"area for node removed, does not affect results",03/02/04,16/04/2006,26.00,LC,1,1,0.3,No mutation detected,G12C,Positive
+8,17727/01,1g,05/09/01,,2b,2,0,0,60mm,,Poorly differentiated,,,no,0,2b,4,yes,,,,,,,, ,Solid,Solid,Solid,Solid,N,1,1,N,,,05/09/01,Alive,,,0,0,1.1,,,
+9,22857/04,1a,18/10/04,,2b,2,1,,57mm,,Grade 2,Yes,Yes,yes,1,2b,4,yes,Right upper lobe,Not stated,,,,,, ,Solid,Solid,Solid,Solid,Y,3,2,N,Y,"Not removed as definate node is small, does not affect results",18/10/04,24/11/2006,25.00,LC,1,1,0.1,G719X ,No mutation,Positive
+10,11535/05,1d,24/05/05,,2a,2,1,,37mm,,Moderately differentiated,No,No,no,0,2a,3,yes,Left upper lobe,Not stated,Known carcinoma of cervix,,,,, ,Micropapillary,Micropapillary,Acinar/Micropapillary,Micropapillary,Y,5,4,Y,Y,,24/05/05,31/03/2007,22.00,LC,1,1,0.4,Exon 19 deletion and G719X,No mutation,Positive
+11,486/01,1b,10/01/00,,2a,2,0,0,16mm,,Well differentiated,,,yes,1,1b,2,yes,,,,,,,, ,Papillary,Papillary,Papillary,Papillary,N,2,2,N,,,10/01/00,Alive,,,0,0,0.1,,,
+12,17435/03,1d,27/08/03,,1b,1,0,0,23mm,,Poorly differentiated,,,no,0,1a,1,yes,,,,,,,, ,Micropapillary,Micropapillary,Micropapillary,Micropapillary,Y,3,3,Y,,,27/08/03,Alive,,,0,0,-0.7,,,
+13,16128/04,1f,21/07/04,,2b,2,1,,60mm,,Moderately differentiated,No,No,yes,1,2b,4,yes,Right lower lobe,Smoker,,,,,, ,Acinar,Acinar,Acinar,Acinar,N,1,1,N,Y,,21/07/04,13/04/2007,32.00,LC,1,1,0.8,No mutation detected,No mutation,Positive
+14,18116/01,1d,12/09/01,,2a,2,1,,33mm,,Moderately differentiated on previous biopsy,Yes,Not stated,no,0,2a,3,yes,Right middle lobe,Ex smoker,,,,,Has a biopsy from this lesion, ,Papillary,Papillary,Papillary,Papillary,Y,4,3,Y,Y,,12/09/01,26/12/2007,75.00,O,1,0,--,No mutation detected,Q61H,Positive
+15,12713/04,1c,08/06/04,,1a,1,1,,20mm,,Moderately differentiated,No,No,no,0,2a,3,yes,Right upper lobe,Smoker,,,,,, ,Micropapillary,Papillary,Papillary,Micropapillary,Y,3,2,Y,Y,"Not removed as small node in whole section, does not affect results",08/06/04,22/02/2012,92.00,LC,1,0,1.1,No mutation detected,G12C,Positive
+16,16844/05,1c,03/08/05,,2a,2,0,0,22mm,,,,,yes,1,1b,2,Yes,,,,,,,, ,Lepidic,Lepidic,Lepidic,Acinar/Lepidic,N,2,2,N,,,03/08/05,07/12/2012,88.00,LC,1,0,-0.8,,,
+17,19961/01,1c,09/10/01,,1b,1,0,0,25mm,,,,,no,0,1a,1,yes,,,,,,,, ,Papillary,Papillary,Papillary,Papillary,Y,4,4,Y,,,09/10/01,Alive,,,0,0,1,,,
+18,8608/00,1e,02/05/00,,2a,2,1,,32mm,,Poorly differentiated,Yes,Yes,no,0,2a,3,yes,Right upper lobe,Not stated,,,,,, ,Solid,Solid,Solid,Solid,Y,5,2,Y,Y,,02/05/00,12/06/2009,109.00,LC,1,0,1.1,No mutation detected,No mutation,Positive
+19,2486/04,1c,03/02/04,,2b,2,0,0,65mm,,,,,no,0,2a,3,yes,,,,,,,,,Acinar/Papillary,Papillary,Papillary,Papillary,Y,4,2,N,,,03/02/04,Alive,,,0,0,-1.9,,,
+20,19172/04,1f,31/08/04,,3,,0,0,60mm,,,,,yes,1,2b,4,yes,,,,,,,, ,Papillary,Papillary,Acinar/papillary,Papillary,Y,3,2,Y,,,31/08/04,Alive,,,0,0,1,,,
+21,26759/04,1d,02/12/04,,2a,2,0,0,13mm,,,,,yes,1,1b,2,Yes,,,,,,,, ,Solid,Solid,Solid,Solid,Y,2,2,Y,,,02/12/04,03/01/2010,61.00,LC,1,0,0.7,,,
+22,1009/03,1h,15/01/03,,1b,1,0,0,30mm,,,,,no,0,1a,1,yes,,,,,,,, ,Acinar,Acinar,Acinar,Acinar,Y,5,3,Y,,,15/01/03,20/04/2013,123.00,U/K,1,0,-1.1,,,
+23,3685/03,1d,19/02/03,,1b,1,1,,22mm,,Moderately differentiated,Yes,Yes,no,0,2a,3,yes,Left lower lobe,not stated,,Sacrum,18/05/06,12490/06,, ,Solid,Solid,Solid,Solid,Y,4,4,Y,Y,,19/02/03,01/10/2006,43.00,LC,1,1,0.4,L858R,No Mutation,Positive
+24,17324/03,1d,25/08/03,,2b,2,0,0,65mm,,,,,yes,1,2a,3,yes,,,,,,,, ,Lepidic,Lepidic,Lepidic,Lepidic,Y,3,3,Y,,,25/08/03,20/10/2009,73.00,LC,1,0,-0.3,,,
+25,1980/06,1c,24/01/06,,1a,1,0,0,16mm,,,,,no,0,1a,1,yes,,,,,,,, ,Lepidic,Lepidic,Lepidic,Lepidic,Y,3,1,Y,,,24/01/06,11/03/2007,13.00,O,1,1,-1.8,,,
+26,1355/04,1b NIF - reject,20/01/04,,1a,1,0,0,6mm,,,,,no,0,1a,1,yes,,,,,,,, ,Acinar,Acinar,Acinar,n/a,N,3,n/a,n/a,,,20/01/04,01/12/2006,34.00,LC,1,1,,,,
+27,26157/05,1e,22/11/05,,2a,2,1,,40mm,,Moderately differentiated,Yes,Yes,no,0,2a,3,yes,Right lower lobe,not stated,,,,,, ,Micropapillary,Micropapillary,Micropapillary,Acinar,Y,3,3,Y,Y,,22/11/05,17/02/2009,38.00,LC,1,1,-1,,,
+28,11042/01,1d,06/06/01,,1a,1,0,0,17mm,,,,,no,0,1a,1,yes,,,,,,,, ,Acinar,Acinar,Acinar,Acinar/solid,Y,5,4,Y,,,06/06/01,16/12/2006,66.00,LC,1,0,-0.6,,,
+29,11555/04,1h,25/05/04,,2a,2,0,0,32mm,,,,,no,0,1b,2,yes,,,,,,,, ,Papillary,Lepidic,Papillary,Papillary,N,4,4,N,,,25/05/04,Alive,,,0,0,-1.6,,,
+30,7577/04,1c,06/04/04,,2a,2,0,0,35mm,,,,,no,0,1b,2,yes,,,,,,,, ,Solid,Solid,Solid,Solid,N,1,1,N,,,06/04/04,Alive,,,0,0,1.8,,,
+31,14709/01,1b,25/07/01,,2a,2,1,,50mm,,Not stated,No,Not stated,yes,1,2a,3,yes,Left lower lobe,not stated,,skin,30/07/03,15371/03,, ,Lepidic,Lepidic,Lepidic,Papillary,Y,5,3,Y,Y,,25/07/01,30/06/2005,47.00,LC,1,1,0.4,No mutation detected,No mutation,Positive
+33,25377/01,1c,18/12/01,,2a,2,0,0,31mm,,,,,no,0,1b,2,yes,,,,,,,, ,Solid,Solid,Solid,Solid,Y,2,2,N,,,18/12/01,07/09/2006,56.00,LC,1,1,0,,,
+34,13806/04,1e,22/06/04,,2a,2,0,0,46mm,,,,,yes,1,1b,2,yes,,,,,,,, ,Acinar,Acinar,Acinar,Micropapillary,Y,4,3,N,,,22/06/04,11/01/2015,126.00,U/K,1,0,1.3,,,
+35,2514/06,1g,30/01/06,,2a,2,1,,32mm,,Moderate,No,Yes,No,0,2a,3,yes,Right upper lobe,Not stated,,,,,,,Micropapillary,Micropapillary,Micropapillary,Micropapillary,Y,2,1,Y,Y,,30/01/06,23/07/2007,17.00,LC,1,1,-0.2,No mutation detected,G12D,Positive
+36,13871/03,1e,09/07/03,,1b,1,1,,27mm,,Poorly differentiated,No,No,No,0,2a,3,yes,Right upper lobe,Not stated,,,,,, ,Solid,Solid,Solid,Solid,N,2,2,N,Y,,09/07/03,03/04/2011,92.00,O,1,0,0.2,Cannot test,Cannot test,Positive
+37,4890/01,1d,13/03/01,,1a,1,0,0,17mm,,,,,no,0,1a,1,yes,,,,,,,, ,Papillary,Papillary,Papillary,Papillary,Y,3,3,Y,,,13/03/01,14/04/2008,85.00,O,1,0,--,,,
+38,19379/02,1b,25/09/02,,1a,1,1,,18mm,,Poorly differentiated,No,No,no,0,2a,3,yes,Left upper lobe,Smoker,,,,,, ,Solid,Solid,Solid,Solid,N,1,1,N,Y,,25/09/02,31/10/2010,97.00,O,1,0,1.3,"Potential low level L858R, outwith cut off",No mutation,Positive
+39,15610/01,1e,07/08/01,,1b,1,0,0,28mm,,,,,No,0,1a,1,yes,,,Sync T1a N0,,,,, ,Acinar,Lepidic,Acinar/Lepidic,Acinar,Y,5,4,Y,,,07/08/01,03/01/2002,4.00,LC,1,1,--,,,
+40,16135/03,1c,11/08/03,,2b,2,1,,60mm,,Moderate to poor,Yes,No,Yes,1,2b,4,yes,Right lower lobe,Smoker,,,,,, ,Papillary,Papillary,Papillary/Micropapillary,Micropapillary,Y,5,3,Y,Y,,11/08/03,07/07/2004,10.00,LC,1,1,1,No mutation detected,G12C,Positive
+41,24516/02,1e,28/11/02,,1a,1,0,0,20mm,,,,,No,0,1a,1,yes,,,,,,,, ,Lepidic,Lepidic,Lepidic,Lepidic,N,2,2,N,,,28/11/02,Alive,,,0,0,-2.8,,,
+42,27236/03,1d,30/12/03,,1b,1,0,0,30mm,,,,,No,0,1a,1,yes,,,,,,,, ,Micropapillary,Micropapillary,Micropapillary,Papillary,Y,5,3,Y,,,30/12/03,09/08/2010,79.00,LC,1,0,0.4,,,
+43,10967/05,1e,17/05/05,,2b,2,0,0,60mm,,,,,yes,1,2a,3,yes,,,second primary bronchogenic neoplasm.,Kidney,20/06/07,49667/07,, ,Acinar,Papillary,Acinar,Acinar,Y,5,3,Y,,,17/05/05,27/01/2008,32.00,LC,1,1,--,,,
+44,27724/05,1g,07/12/05,,2a,2,0,0,28mm,,,,,yes,1,1b,2,yes,,,,Bronchus,01/06/10,12942/10,, ,Solid,Solid,Solid,Acinar,Y,5,5,Y,,,07/12/05,08/12/2010,60.00,LC,1,1,--,,,
+45,14972/04,1e,06/07/04,,2b,2,1,,62mm,,Poorly differentiated,No,No,No,0,2b,4,yes,Left lung,Ex-smoker,,,,,, ,Solid,Solid,Solid,Solid,N,1,1,N,Y,,06/07/04,Alive,,,0,0,0.7,No mutation detected,G12V,Negative
+46,22678/03,1e,04/11/03,,2b,2,0,0,55mm,,,,,yes,1,2a,3,yes,,,,,,,, ,Acinar,Acinar,Acinar,Acinar,N,2,2,N,,,04/11/03,06/04/2007,41.00,U/K,1,1,--,,,
+47,4486/05,1b,28/02/05,,1b,1,0,0,26mm,,Moderate,,,No,0,1a,1,yes,Left lower lobe,u/k,,,,,, ,Acinar,Acinar,Acinar/Solid,Acinar,N,2,1,N,,,28/02/05,07/04/2010,61.00,LC,1,0,0,,,
+48,26953/06,1f,09/10/06,,2a ,2,1,,43mm,,Moderately differentiated,No,No,No,0,2a,3,Yes,Right upper lobe,Not stated,,,,,, ,Lepidic,Lepidic,Lepidic,Acinar,N,4,4,N,Y,,09/10/06,29/07/2008,21.00,LC,1,1,--,L858R,No mutation,Positive
+49,24328/02,1c,27/11/02,,2b,2,1,,52mm,,Poorly differentiated,Yes,No,yes,1,2b,4,yes,Left upper lobe,Not stated,,,,,, ,Solid,Solid,Solid,Solid,Y,1,1,N,Y,,27/11/02,07/12/2002,0.00,O,1,1,--,Possible low level G719X (outwith cut off),No mutation,Positive
+50,7356/00,1d,13/04/00,,3,,0,0,77mm,,,,,no,0,2b,4,yes,,,,,,,, ,Solid,Solid,Solid,Solid,Y,4,3,Y,,,13/04/00,09/02/2016,189.00,U/K,1,0,--,,,
+51,10328/01,1g,27/05/01,,2b,2,1,,6mm,,Moderately differentiated,Yes,Not stated,No,0,2b,4,yes,Right upper lobe,Not stated,,,,, , ,Micropapillary,Micropapillary,Micropapillary,Papillary,Y,4,3,Y,Y,,27/05/01,Alive,,,0,0,-0.3,L858R,no mutation,Positive
+52,20530/01,1d,16/10/01,,2b,2,0,0,52mm,,,,,no,0,2a,3,yes,,,,,,,, ,Papillary,Papillary,Papillary,Papillary,N,3,3,N,,,16/10/01,Alive,,,0,0,-1.6,,,
+53,19804/00,1c,04/10/00,,1b,1,1,,25mm,,Moderately differentiated,,,no,0,2a,3,yes,Left upper lobe,Smoker,,,,,, ,Acinar,Lepidic,Lepidic,Solid,Y,5,5,Y,Y,,04/10/00,04/08/2003,34.00,LC,1,1,-0.5,Exon 19 deletion,No mutation,Positive
+54,18771/04,1c,25/08/04,,2a,2,0,0,38mm,,,,,yes,1,1b,2,Yes,,,,,,,, ,Acinar,Acinar,Acinar,Acinar,Y,3,1,Y,,,25/08/04,18/07/2008,46.00,LC,1,1,-0.8,,,
+55,7196/04,1f,31/03/04,,3,,0,0,87mm,,Moderate to poorly differentiated,,,Yes,1,2b,4,yes,,,,,,,, ,Acinar,Acinar,Acinar/solid,Solid,N,2,2,N,,,31/03/04,Alive,,,0,0,1.1,,,
+56,11052/05,1e,17/05/05,,2b,2,0,0,27mm,,,,,Yes,1,1b,2,yes,,,,,,,, ,Acinar,Acinar,Acinar,Acinar,Y,5,4,N,,,17/05/05,24/03/2012,82.00,LC,1,0,-0.7,,,
+57,16216/05,1f,25/07/05,,1a,1,0,0,17mm,,Moderate,,,No,0,1a,1,yes,,,,,,,, ,Acinar,Acinar,Acinar,Acinar,N,3,2,N,,,25/07/05,Alive,,,0,0,-1,,,
+58,21575/02,1d,22/10/02,,2a,2,0,0,34mm,,,,,yes,1,1b,2,yes,,,,,,,, ,Solid,Solid,Solid,Solid,N,3,3,n,,,22/10/02,21/01/2004,14.00,LC,1,1,1.4,,,
+59,15792/03,1c,05/08/03,,2a,2,0,0,25mm,,,,,yes,1,1b,2,yes,,,,,,,, ,Solid,Solid,Solid,Solid,N,1,1,N,,,05/08/03,29/10/2009,74.00,LC,1,0,0.3,,,
+60,6020/05,1i,17/03/05,,3,,0,0,100mm,,,,,no,0,2b,4,yes,,,,lung,10/08/07,20918/07,, ,Acinar,Acinar,Acinar,Lepidic,Y,4,3,N,,,17/03/05,30/05/2009,50.00,LC,1,1,-1.9,,,
+61,12870/02,1e,27/06/02,,2a,2,1,,35mm,,Moderate,Yes,No,yes,1,2a,3,yes,Right upper lobe,Ex-smoker,,,,,, ,Lepidic,Lepidic,Lepidic,Lepidic,Y,4,3,Y,Y,,27/06/02,08/05/2005,34.00,LC,1,1,-0.6,No mutation detected,G12C,Positive
+62,11121/05,1i,18/05/05,,1b,1,1,,22mm,,Poorly differentiated,Yes,Yes,no,0,2a,3,yes,Left lower lobe,Not stated,,,,,, ,Solid,Solid,Solid,Solid,N,1,1,N,Y,,18/05/05,05/10/2015,124.00,U/K,1,0,0.5,No mutation detected,G12D,Positive
+63,24300/06,1c,12/09/06,,1a,1,1,,20mm,,Moderate,No,No,no,0,2a,3,yes,Left upper lobe,Ex smoker,,Med nodes,09/03/09,5742/09,, ,Lepidic,Lepidic,Lepidic,Lepidic,Y,3,2,Y,WAW,,12/09/06,20/08/2009,35.00,LC,1,1,-0.8,G719X,No mutation,Positive
+64,14301/04,1e,28/06/04,,3,,0,0,75mm,1,Moderate,,,no,0,2b,4,yes,,,2nd primary,,20/03/07,8378/07,, ,Papillary,Papillary,Papillary,Papillary,Y,4,4,Y,,,28/06/04,02/07/2010,72.00,LC,1,0,-1.3,,,
+65,18890/05,1i,29/08/05,,2b,2,0,0,51mm,,,,,yes,1,2a,3,yes,,,,,,,, ,Solid,Solid,Solid,Solid,N,2,1,N,,,29/08/05,Alive,,,0,0,2.4,,,
+66,23991/04,1c,02/11/04,,1b,1,0,0,25mm,,,,,no,0,1a,1,yes,,,,,,,, ,Lepidic,Lepidic,Lepidic,Lepidic,Y,4,4,Y,,,02/11/04,18/07/2005,8.00,O,1,1,-1.6,,,
+67,4155/03,1c,26/02/03,,1b,1,0,0,30mm,,,,,yes,1,1a,1,yes,,,,,,,, ,Micropapillary,Micropapillary,Micropapillary,Micropapillary,Y,3,2,Y,,,26/02/03,30/04/2013,122.00,U/K,1,0,0.2,,,
+68,24866/04,1b,11/11/04,,1b,1,0,0,23mm,,,,,no,0,1a,1,yes,,,,,,,, ,Lepidic,Lepidic,Lepidic,Lepidic,N,3,3,N,,,11/11/04,10/05/2015,125.00,U/K,1,0,-0.4,,,
+69,12045/06,1g,15/05/06,,2a,2,1,,32mm,,Moderate,No,No,no,0,2a,3,yes,Right upper lobe,Not stated,,,,,, ,Micropapillary,Micropapillary,Acinar/micropapillary,Micropapillary,Y,3,2,Y,Y,Not removed as cannot tell if direct extension. Would not affect predominant pattern,15/05/06,16/05/2010,48.00,LC,1,1,0.1,No mutation detected,G12C,-
+70,7830/04,1e,08/04/04,,1b,1,0,0,23mm,,,,,no,0,1a,1,yes,,,,,,,, ,Solid,Solid,Solid,Solid,N,3,1,N,,,08/04/04,21/02/2016,142.00,U/K,1,0,0.5,,,
+71,20565/05,1f,21/09/05,,2a,2,0,0,32mm,,,,,no,0,1b,2,yes,,,,,,,, ,Acinar,Acinar,Acinar,Acinar,Y,5,4,Y,,,21/09/05,Alive,,O,0,0,0,,,
+72,25880/02,1b,17/12/02,,2a,2,0,0,38mm,,,,,yes,1,1b,2,yes,,,,,,,, ,Solid,Solid,Solid,Solid,Y,3,3,Y,,,17/12/02,31/01/2007,49.00,U/K,1,1,1,,,
+73,15846/04,1f,19/07/04,,2a,2,0,0,50mm,,,,,no,0,1b,2,yes,,,2nd primary,,06/01/09,290/09,, ,Lepidic,Lepidic,Lepidic,Micropapillary,Y,5,3,Y,,,19/07/04,Alive,,,0,0,-1.6,,,
+74,20109/00,1e (should be 2E KW),07/10/11,,2a,2,0,0,38mm,,,,,no,0,1b,2,yes,,,,,,,, ,Papillary,Papillary,Papillary,Acinar/Papillary,Y,4,3,Y,,,07/10/11,04/08/2010,0.00,O,1,1,-1.3,,,
+75,5664/02,1d,19/03/02,,2a,2,1,,32mm,,Moderate,Yes,Not stated,no,0,2a,3,yes,Left upper lobe,Ex-smoker,,,,,, ,Micropapillary,Micropapillary,Micropapillary,Micropapillary,Y,5,3,Y,Y,,19/03/02,05/08/2002,4.00,LC,1,1,0,No mutation detected,G12V,Cytoplasmic positive
+76,22268/00,1d,07/11/00,,3,,0,0,40mm + 2nd nodule               ,,,,,yes,1,2b,4,yes,,,,,,,, ,Acinar,Acinar,Acinar,Acinar,N,2,1,N,,,07/11/00,11/10/2001,11.00,LC,1,1,-0.1,,,
+77,8894/03,1b,06/05/03,,1a,1,0,0,20mm,,,,,no,0,1a,1,yes,,,,,,,, ,Acinar,Acinar,Acinar,Acinar,N,2,2,N,,,06/05/03,Alive,,,0,0,0.2,,,
+78,20689/00,1f,16/10/00,,1b,1,0,0,30mm,,,,,no,0,1a,1,yes,,,2nd primary,,22/10/02,21575/02 (T2a N0),, ,Micropapillary,Micropapillary,Micropapillary,Acinar,Y,5,2,Y,,,16/10/00,21/01/2004,39.00,U/K,1,1,-0.6,,,
+79,4880/04,1d,03/03/04,,2a,2,0,0,39mm,,,,,yes,1,1b,2,yes,,,,,,,,,Solid,Solid,Solid,Solid,N,4,4,N,,,03/03/04,09/11/2005,20.00,LC,1,1,-0.1,,,
+80,10257/04,5c,10/05/04,,2a,2,0,0,32mm,,,,,no,0,1b,2,yes,,,,,,,, ,Solid,Solid,Solid,Solid,N,1,1,N,,,10/05/04,02/02/2006,20.00,LC,1,1,1.4,,,
+81,21660/01,1e,31/10/01,,2a,2,0,0,28mm,,,,,yes,1,1b,2,yes,,,,,,,, ,Solid,Solid,Solid,Lepidic,Y,4,4,N,,,31/10/01,Alive,,,0,0,-1.1,,,
+82,23282/01,1f,21/11/01,,3,,0,0,100mm,,,,,no,0,2b,4,yes,,,,left  lung,28/10/04,23686/04,, ,Lepidic,Lepidic,Lepidic,Lepidic,N,1,1,N,,,21/11/01,Alive,,,0,0,-1.8,,,
+83,8998/03,1c,07/05/03,,2a,2,0,0,32mm,,,,,yes,1,1b,2,yes,,,,,,,, ,Solid,Solid,Solid,Solid,N,1,1,N,,,07/05/03,19/12/2009,79.00,LC,1,0,1.3,,,
+84,5721/03,1d,18/03/03,,2b,2,0,0,53mm,,,,,No,0,1b,2,yes,,,,,,,, ,Solid,Solid,Solid,Solid,N,1,1,N,,,18/03/03,18/04/2015,145.00,U/K,1,0,1.5,,,
+85,2116/01,1a,01/02/01,,1a,1,1,,10mm,,Moderate,Yes,Yes,no,0,2a,3,Not known,Left upper lobe,Not stated,,,,,, ,Lepidic,Lepidic,Lepidic,Lepidic,Y,4,4,Y,Y,,01/02/01,16/11/2003,33.00,LC,1,1,0,No mutation detected,G12V,Negative (Weakly positive in a small proportion of tumour cells)
+86,7952/03,1e,17/04/03,,1a,1,0,0,18mm,,,,,No,0,1a,1,yes,,,,,,,, ,Acinar,Lepidic,Acinar,Acinar,N,2,2,N,,,17/04/03,21/01/2015,141.00,U/K,1,0,0.2,,,
+87,11109/03,1c,04/06/03,,2b,2,1,,70mm,,Moderate,No,No,yes,1,2b,4,yes,Right lower lobe,Non-smoker,,,,, , ,Acinar,Acinar,Acinar,Lepidic/papillary,Y,4,3,Y,Y,,04/06/03,18/10/2005,28.00,LC,1,1,-0.1,No mutation detected,G12V,Negative
+88,19535/03,1d,24/09/03,,1a,1,0,0,18mm,,,,,no,0,1a,1,yes,,,,,,,, ,Acinar,Acinar,Acinar,Acinar,N,2,2,N,,,24/09/03,Alive,,,0,0,-0.1,,,
+89,6887/00,1b,06/04/00,,2a,2,0,0,50mm,,,,,no,0,1b,2,yes,,,,Trachea & neck node,14/11/02,23360/02,, ,Papillary,Papillary,Papillary,Papillary,Y,4,3,Y,,,06/04/00,26/04/2003,36.00,LC,1,1,0.5,,,
+90,13334/03,1e,02/07/03,,2a,2,0,0,25mm,,,,,yes,1,1b,2,yes,,,,,,,, ,Solid,Acinar,Acinar/lepidic,Lepidic,Y,5,4,Y,,,02/07/03,Alive,,,0,0,-0.2,,,
+91,26514/04,1d,30/11/04,,2a,2,0,0,30mm,,,,,yes,1,1b,2,yes,,,,,,,, ,Acinar,Acinar,Acinar,Acinar,N,2,2,N,,,30/11/04,10/01/2014,109.00,U/K,1,0,0.6,,,
+92,19916/00,1e,05/10/00,,1b,1,0,0,25mm,,,,,No,0,1a,1,yes,,,,,,,, ,Papillary,Papillary,Papillary,Papillary,N,2,1,N,,,05/10/00,23/10/2011,132.00,O,1,0,-1.9,,,
+93,16580/01,5e,22/08/01,,2a,2,1,,38mm,,Poorly differentiated,No,Not stated,no,0,2a,3,yes,Left upper lobe,Smoker,,,,,, ,Micropapillary,Micropapillary,Acinar/Micropapillary,Micropapillary,Y,2,2,Y,Y,,22/08/01,13/10/2002,13.00,LC,1,1,0.3,No mutation detected,G12D,Positive
+94,21468/02,1b,12/10/02,,1a,1,0,0,8mm,,,,,No,0,1a,1,yes,,,,,,,, ,Solid,Solid,Solid,Solid,N,1,1,N,,,12/10/02,29/06/2010,92.00,LC,1,0,0.9,,,
+95,14655/01,1c,25/07/01,,2b,2,0,0,65mm,,,,,yes,1,2a,3,yes,,,,,,,, ,Solid,Solid,Solid,Solid,N,2,2,N,,,25/07/01,13/04/2006,56.00,LC,1,1,1.1,,,
+96,8733/04,1f,21/04/04,,1b,1,1,,25mm,,Moderate,Yes,No,No,0,2a,3,yes,Right middle lobe,Ex-smoker,,,,,, ,Solid,Solid,Solid,Solid,Y,4,3,Y,Y,,21/04/04,09/08/2012,99.00,LC,1,0,0.3,No mutation detected,G12C,Positive
+97,21948/00,1c,01/11/00,,2a,2,0,0,45mm,,,,,no,0,1b,2,yes,,,,,,,, ,Acinar,Acinar,Acinar,Acinar,N,3,2,N,,,01/11/00,Alive,,,0,0,1.1,,,
+98,11351/04,1c,24/05/04,,2b,2,1,,55mm,,Poorly differentiated,No,Yes,yes,1,2b,4,No,Right lower lobe,Not stated,,,,,, ,Acinar,Acinar,Acinar,Solid,Y,4,4,Y,Y,,24/05/04,27/04/2009,59.00,LC,1,1,-0.3,No mutation detected,G12A,Positive
+99,15690/02,3c,06/08/02,,2a,2,1,,33mm,,Moderate,No,No,no,0,2a,3,yes,Right middle lobe,Ex-smoker,,,,, , ,Acinar,Acinar,Acinar,Acinar,Y,4,3,Y,WAW,,06/08/02,01/10/2005,37.00,LC,1,1,-0.5,Exon 20 insertion,No mutation,Positive
+100,5063/04,1d,04/03/04,,3,,0,0,31mm  + satellite nodule,,,,,no,0,2b,4,yes,,,,,,,, ,Papillary,Papillary,Papillary,Papillary,Y,3,3,Y,,,04/03/04,Alive,,,0,0,--,,,
+101,1767/03,1c,27/01/03,,2a,2,0,0,35mm,,,,,no,0,1b,2,yes,,,,,,,, ,Solid,Solid,Solid,Solid,Y,3,2,Y,,,27/01/03,19/08/2004,18.00,LC,1,1,0.2,,,
+102,29184/05,1b,22/12/05,,2a,2,1,,32mm,,Moderate,No,No,yes,1,2a,3,yes,,Not stated,,,,,, ,Acinar,Acinar,Acinar,Acinar,Y,2,2,N,Y,,22/12/05,22/08/2011,68.00,LC,1,0,-0.8,No mutation detected,G12C,Positive
+103,1879/03,1c,27/01/03,,2a,2,0,0,28mm + obstruction,,,,,no,0,1b,2,yes,,,,,,,, ,Acinar,Acinar,Acinar,Acinar,N,2,2,N,,,27/01/03,27/12/2008,71.00,LC,1,0,0.1,,,
+104,5198/03,1b,12/03/03,,2a,2,0,0,35mm,,,,,yes,1,1b,2,yes,,,,,,,, ,Acinar,Acinar,Acinar,Acinar,Y,3,3,Y,,,12/03/03,27/03/2006,36.00,LC,1,1,0.2,,,
+105,7308/00,1e,12/04/00,,1b,1,0,0,27mm,,,,,no,0,1a,1,yes,,,,,,,, ,Micropapillary,Micropapillary,Solid/Micropapillary,Solid,Y,4,4,Y,,,12/04/00,Alive,,,0,0,1.3,,,
+106,19402/03,1d,23/09/03,,2a,2,0,0,17mm,,,,,yes,1,1b,2,yes,,,,,,,, ,Solid,Solid,Solid,Solid,Y,2,2,N,,,23/09/03,Alive,,,0,0,-0.2,,,
+107,14225/06,1a,05/06/06,,2a,2,1,,32mm,,Moderate to poor,No,No,no,0,2a,3,No (report unsure),Right upper lobe,Not stated,,,,,Biopsy of this lesion, ,Acinar,Acinar,Acinar,Acinar,Y,3,3,Y,Y,Does not affect predominant pattern,05/06/06,28/01/2011,55.00,O,1,1,0.4,"Possible low level G719X mutation, way beyond cut off",no mutation,Positive
+108,1980/04,1b,27/01/04,,1a,1,0,0,18mm,,,,,no,0,1a,1,yes,,,,SCF Node,08/08/06,20474/06,, ,Acinar,Acinar,Acinar,Acinar,N,3,3,N,,,27/01/04,31/01/2007,36.00,LC,1,1,-1.8,,,
+109,12179/02,1d,19/06/02,,2a,2,1,,45mm,,Moderate to poor,No,No,yes,1,2a,3,yes,Left upper lobe into left lower lobe,Smoker,,,,,, ,Solid,Micropapillary,Solid,Solid,Y,4,2,Y,Y,,19/06/02,Alive,,,0,0,0.8,No mutation detected,G12V,Positive
+110,5386/05,1d,09/03/05,,2a,2,1,,35mm,,Moderate,No,No,no,0,2a,3,yes,Left lung,Not stated,,,,,, ,Acinar,Acinar,Acinar,Acinar,N,3,3,N,Y,Not removed as cannot tell if direct extension. Would not affect predominant pattern,09/03/05,13/09/2008,42.00,LC,1,1,0.9,No mutation detected,No mutation,Positive
+111,3393/04,1b,12/02/04,,2a,2,1,,both 35mm.  ,,Moderate,No,No,yes,1,2a,3,yes,Left upper lobe,Not stated,Sync 2a N0,,,,, ,Acinar,Acinar,Acinar,Acinar,Y,5,4,Y,Y,,12/02/04,Alive,,,0,0,0.8,No mutation detected,no mutation,Positive
+112,24473/05,1c,07/11/05,,1b,1,0,0,30mm,,Moderate,,,yes,1,1a,1,yes,,,,,,,, ,Micropapillary,Micropapillary,Acinar/Lepidic/micropapillary,Acinar,Y,4,3,Y,,,07/11/05,28/02/2009,39.00,LC,1,1,-0.6,,,
+113,11278/00,1a,07/06/00,,2b,2,0,0,57mm,,,,,no,0,2a,3,yes,,,,Cervical node,19/02/01,3404/01,, ,Papillary,Papillary,Papillary,Papillary,N,3,3,N,,,07/06/00,25/10/2002,28.00,LC,1,1,1.9,,,
+114,15626/01,1h,08/08/01,,1b,1,1,,25mm,,Poorly differentiated,Yes,Not stated,no,0,2a,3,yes,Left lower lobe,Ex-smoker,,,,,, ,Micropapillary,Micropapillary,Micropapillary,Micropapillary,Y,3,3,Y,Y,,08/08/01,07/07/2002,10.00,LC,1,1,0.7,No mutation detected,No mutation,Positive
+115,9627/03,1c,15/05/03,,2a,2,0,0,29mm,,,,,yes,1,1b,2,yes,,,,,,,, ,Micropapillary,Micropapillary,Micropapillary,Micropapillary,Y,4,3,Y,,,15/05/03,Alive,,,0,0,0.1,,,
+116,23138/04,1a,20/10/04,,2a,2,0,0,42mm,,,,,no,0,1b,2,yes,,,,,,,, ,Papillary,Papillary,Papillary,Lepidic,Y,3,2,Y,,,20/10/04,25/03/2009,53.00,LC,1,1,-1.2,,,
+117,16913/00,1e,23/08/00,,2a,2,1,,40mm,,Poorly differentiated,Yes,Not stated,no,0,2a,3,yes,Right upper lobe,Smoker,,,,,, ,Solid,Solid,Solid,Solid,N,1,1,N,Y,,23/08/00,26/08/2000,0.00,LC,1,1,0.6,No mutation detected,Q61L,Positive
+118,29037/06,1c,30/10/06,,2a,2,1,,42mm,,Moderately differentiated,Yes,Yes,yes,1,2a,3,yes,Right lower lobe,Not stated,,,,,, ,Acinar,Acinar,Acinar,Papillary,Y,4,4,Y,With WAW,,30/10/06,14/12/2007,13.00,LC,1,1,0.5,G719X and S768I,No mutation,Positive
+119,4937/01,1e,13/03/01,,3,3,0,0,46 mm + nodule 0.5 cm,,,,,yes,1,2b,4,yes,,,,,,,, ,Solid,Solid,Solid,Solid,Y,3,2,Y,,,13/03/01,07/10/2001,6.00,O,1,1,0.1,,,
+120,22641/00,1a,13/11/00,,2b,2,0,0,55mm,,,,,no,0,2a,3,yes,,,,,,,, ,Acinar,Acinar,Acinar,Acinar,Y,4,3,Y,,,13/11/00,31/12/2004,49.00,LC,1,1,0.9,,,
+121,13232/03,1e,01/07/03,,2b,2,0,0,45mm,,,,,yes,1,2a,3,yes,,,,,,,, ,Acinar,Acinar,Acinar,Papillary,Y,4,4,Y,,,01/07/03,06/07/2003,0.00,LC,1,1,-0.3,,,
+122,5922/05,2g,16/03/05,,3,3,0,0,58mm,,,,,yes,1,2b,4,yes,,,,,,,, ,-,-,,-,-,-,-,-,,,16/03/05,Alive,,,0,0,-1,,,
+123,957/05,1b,17/01/05,,1a,1,0,0,16mm,,,,,no,0,1a,1,yes,,,,,,,, ,Acinar,Acinar,Acinar,Acinar,N,2,2,N,,,17/01/05,23/02/2010,61.00,O,1,0,-1.3,,,
+124,24164/04,1b,03/11/04,,1a,1,0,0,12mm,,,,,no,0,1a,1,yes,,,,,,,, ,Solid,Solid,Solid,Solid,Y,4,4,Y,,,03/11/04,Alive,,,0,0,,,,
+125,23220/01,1c,19/11/01,,1a,1,0,0,15mm,,,,,no,0,1a,1,yes,,,,,,,, ,Solid,Solid,Solid,Solid,N,3,3,N,,,19/11/01,03/02/2008,74.00,O,1,0,-0.3,,,
+126,4992/01,1e,14/03/01,,2a,2,1,,35mm,,Moderately differentiated,Yes,Not stated,no,0,2a,3,yes,Left lower lobe,Not stated,,,,,, ,Acinar,Acinar,Acinar,Micropapillary,Y,4,4,Y,Y,,14/03/01,03/08/2003,28.00,LC,1,1,-0.5,No mutation detected,Q61H,Positive
+127,10311/05,1d,09/05/05,,1a,1,1,,20mm,,Moderate,Yes,No,no,0,2a,3,Yes,Left upper lobe,Smoker,,,,,, ,Micropapillary,Micropapillary,Micropapillary,Solid/Micropapillary,Y,3,3,Y,Y,,09/05/05,15/07/2006,14.00,LC,1,1,-1,No mutation detected,No mutation,Positive
+128,18194/01,1d,12/09/01,,1b,1,1,,24mm,,Poorly differentiated,Yes,Not stated,no,0,2a,3,yes,Left upper lobe,Not stated,,,,,, ,Solid,Solid,Solid,Solid,N,2,1,N,Y,,12/09/01,Alive,,,0,0,1.2,No mutation detected,No mutation,Positive
+129,23283/01,1c,21/11/01,,3,3,0,0,20mm,,Moderately to poorly differentiated-KW,,,yes + parietal / chest wall,1,2b,4,yes,,,,,,,, ,Acinar,Acinar,Acinar,Acinar,Y,4,3,Y,,,21/11/01,07/01/2007,61.00,LC,1,0,0.1,,,
+130,25194/01,1e,17/12/01,,2a,2,0,0,40mm,,,,,yes,1,1b,2,yes,,,,,,,, ,Solid,Solid,Solid,Solid,N,2,2,N,,,17/12/01,04/12/2002,11.00,LC,1,1,1.5,,,
+131,1447/03,2c,22/01/03,,1b,1,1,,25mm,,Poorly differentiated,Yes,Yes,no,0,2a,3,yes,Left upper lobe,Not stated,,,,,, ,Solid,Solid,Solid,Solid,N,2,1,N,Y,Removal of involved node does not alter call,22/01/03,30/04/2003,3.00,LC,1,1,0.3,No mutation detected,Q61H,Positive
+132,3653/04,1c,17/02/04,,2a,2,0,0,18mm,,,,,yes,1,1b,2,yes,,,,,,,, ,Solid,Solid,Solid,Solid,Y,1,1,N,,,17/02/04,08/12/2008,57.00,O,1,1,0.2,,,
+133,25903/03,1b,10/12/03,,2a,2,0,0,47mm,,,,,no,0,1b,2,yes,,,,,,,, ,Solid,Solid,Solid,Solid,N,2,2,N,,,10/12/03,Alive,,,0,0,0.3,,,
+134,15205/01,1d,01/08/01,,2a,2,0,0,18mm,,,,,yes,1,1b,2,yes,,,,pleura,29/10/04,23956/04,, ,Micropapillary,Micropapillary,Micropapillary,Micropapillary,Y,3,3,Y,,,01/08/01,04/04/2005,44.00,LC,1,1,-0.4,,,
+135,22248/05,1e,12/10/05,,2a,2,1,,38mm,,Poorly differentiated,No,No,yes,1,2a,3,yes,Right lower lobe,Smoker,,,,,, ,Solid,Solid,Solid,Solid,Y,3,2,N,Y,,12/10/05,Alive,,,0,0,0.7,No mutation detected,No mutation,Positive
+136,2943/03,1a,10/02/03,,1b,1,0,0,26mm,,,,,yes,1,1a,1,yes,,,,,,,, ,Solid,Solid,Solid,Solid,Y,5,3,Y,,,10/02/03,04/05/2005,26.00,O,1,1,0.6,,,
+137,23891/03,1f,17/11/03,,2b,2,0,0,55mm,,,,,no,0,2a,3,yes,,,,,,,, ,Acinar,Acinar,Acinar,Acinar,N,2,2,N,,,17/11/03,06/09/2008,57.00,LC,1,1,-0.1,,,
+138,23719/04,1e,28/10/04,,1a,1,0,0,13mm,,,,,no,0,1a,1,Yes,,,,,,,, ,Micropapillary,Micropapillary,Micropapillary,Micropapillary,Y,3,3,Y,,,28/10/04,Alive,,,0,0,-0.7,,,
+139,20052/02,1e,02/10/02,,2b,2,1,,55mm,,Moderate,No,No,yes,1,2b,4,yes,Right upper lobe and middle lobe,Not stated,,,,,, ,Acinar,Acinar,Acinar,Acinar,Y,3,3,Y,Y,"Definate nodal disease removed and counted as normal tissue, does not affect call. Calculations here still include nodal disease",02/10/02,02/06/2003,8.00,LC,1,1,1.2,No mutation detected,G12V,Positive
+140,12816/05,1b,09/06/05,,1b,1,1,,20mm,,Moderate,No,Yes,no,0,2a,3,yes,Right middle lobe,Not stated,,,,,, ,Acinar/Micropapillary,Acinar/Micropapillary,Acinar/Micropapillary,Acinar/Micropapillary,Y,3,2,Y,Y,,09/06/05,16/09/2006,15.00,LC,1,1,-0.7,No mutation detected,8.5% G12V (repeated),Positive
+141,23386/05,1d,26/10/05,,1a,1,0,0,12mm,,,,,no,0,1a,1,yes,,,,,,,, ,Solid,Solid,Solid,Solid,N,3,3,N,,,26/10/05,Alive,,,0,0,0,,,
+142,21593/05,1e,05/10/05,,1b,1,0,0,22mm,,Well to moderate,,,no,0,1a,1,yes,,,,,,,, ,Acinar,Acinar,Acinar,Acinar,Y,3,3,Y,,,05/10/05,05/10/2008,36.00,O,1,1,0.6,,,
+143,24263/06,1f,12/09/06,,2a,2,1,,25mm,,Moderate to poor,Yes,Yes,yes,1,2a,3,yes,Left upper and lower lobes,No stated,,,,,, ,Acinar,Acinar,Acinar,Solid,Y,3,2,N,Y,,12/09/06,06/11/2006,1.00,O,1,1,-0.4,No mutation detected,No mutation,Positive
+144,19739/05,1c,08/09/05,,2a,2,0,0,50mm,,,,,no,0,1b,2,Yes,,,Sync T1a N0,,,,, ,Papillary,Papillary,Lepidic,Lepidic,Y,4,4,Y,,,08/09/05,Alive,,,0,0,-1.3,,,
+145,1954/05,1b,27/01/05,,1b,1,0,0,28mm,,,,,no,0,1a,1,yes,,,,,,,, ,Acinar,Acinar,Acinar,Acinar,N,2,2,N,,,27/01/05,18/10/2006,20.00,LC,1,1,0.6,,,
+146,2119/04,1d,28/01/04,,2b,2,1,,70mm,,"Moderate, focally poor",Yes,Yes,yes,1,2b,4,yes,Right upper lobe,Ex-smoker,,,,,, ,Acinar,Acinar,Acinar,Acinar,Y,3,1,N,Y,,28/01/04,12/06/2005,16.00,LC,1,1,1,No mutation detected,No mutation,Positive
+147,24892/02,1b,03/12/02,,2a,2,0,0,23mm,,,,,yes,1,1b,2,yes,,,,,,,, ,Papillary,Papillary,Papillary,Papillary,Y,5,5,Y,,,03/12/02,02/09/2012,116.00,O,1,0,-1.3,,,
+148,8986/01,1c,09/05/01,,2a,2,0,0,35mm,,,,,no,0,1b,2,yes,,,,,,,, ,Acinar,Acinar,Acinar/Papillary,Acinar,Y,5,4,Y,,,09/05/01,19/08/2013,147.00,U/K,1,0,0.1,,,
+149,12288/01,1c,21/06/01,,2a,2,1,,30mm,,Poorly differentiated,Yes,Not stated,yes,1,2a,3,yes,Right lower lobe,Smoker,,Bronchus,25/03/02,5989/02,, ,Solid,Solid,Solid,Solid,Y,3,1,N,Y,,21/06/01,20/10/2004,39.00,LC,1,1,1.2,No mutation detected,G12D,Positive
+150,8971/01,1d,09/05/01,,2b,2,1,,70mm,,Moderate,No,Not stated,no,0,2b,4,yes,Right lower lobe,Smoker,,,,,, ,Lepidic,Lepidic,Lepidic,Lepidic,Y,4,4,Y,Y,,09/05/01,13/01/2005,44.00,LC,1,1,-0.1,No mutation detected,G12V,Cytoplasmic positive
+151,477/06,1e,09/01/06,,1a,1,1,,17mm,,Moderate to poor,No,Yes,no,0,2a,3,yes,Left upper lobe,Not stated,,,,,, ,Micropapillary,Micropapillary,Micropapillary,Micropapillary,Y,4,3,Y,Y,,09/01/06,Alive,,,0,0,0,No mutation detected,G12V,Positive
+701,109/97,4,06/01/97,,1b,1,0,0,28,,,,,N,0,1a,1,Y,,,,,,,,,Lepidic,Lepidic,Lepidic,Lepidic,Y,4,3,Y,,,06/01/97,21/06/1997,5.00,LC,1,1,0.2,,,
+702,1714-99,1c2,27/01/99,,2a,2,0,0,35,,,,,N,0,1b,2,Y,,,,,,,,,Solid,Solid,Solid,Solid,N,3,3,N,,,27/01/99,Alive,,,0,0,1.6,,,
+703,2843-99,1b1,10/02/99,,1b,1,0,0,23,,,,,N,0,1a,1,Y,,,,,,,,,Acinar,Acinar,Acinar,Acinar,Y,4,4,Y,,,10/02/99,19/05/2012,159.00,O,1,0,0,,,
+704,3002-97,f,12/02/97,,1b,1,0,0,25,,,,,N,0,1a,1,Y,,,,,,,,,Acinar,Acinar,Acinar,Solid,Y,4,2,Y,,,12/02/97,13/03/2001,49.00,LC,1,1,1.1,,,
+705,3478-97,1b2,18/02/97,,1a,1,0,0,15,,,,,N,0,1a,1,Y,,,,,,,,,Acinar,Acinar,Acinar,Acinar,N,2,2,N,,,18/02/97,01/06/2014,207.00,U/K,1,0,-0.8,,,
+707,5415-97,1c1,13/03/97,,2a,2,0,0,31,,,,,N,0,1b,2,Y,,,,,,,,,Lepidic,Lepidic,Lepidic/Papillary,Lepidic,N,3,3,N,,,13/03/97,04/02/1999,22.00,LC,1,1,-0.4,,,
+709,6761-98,1b1,01/04/98,,2b,2,0,0,57,,,,,Y,1,2a,3,Y,,,,,,,,,Papillary,Papillary,Papillary,Papillary,Y,3,3,Y,,,01/04/98,16/02/2002,46.00,LC,1,1,--,,,
+710,8185-99,a,21/04/99,,2a,2,0,0,20,,,,,Y,1,1b,2,Y,,,Neg mediastinoscopy,,,,,,Papillary,Papillary,Papillary,Papillary,Y,4,2,Y,,,21/04/99,Alive,,,0,0,-0.9,,,
+712,9109-99,1b1,04/05/99,,1a,1,0,0,16,,,,,N,0,1a,1,Y,,,,,,,,,Acinar,Acinar,Acinar,Acinar,Y,4,2,Y,,,04/05/99,Alive,,,0,0,-2.3,,,
+713,10323/97,1d,21/05/97,,3,3,0,0,110,,,,,N,0,2b,4,Y,,,,,,,,,Acinar,Acinar,Acinar,Acinar,N,3,1,N,,,21/05/97,Alive,,,0,0,0.5,,,
+715,12259-98,1b2,10/06/98,,2a,2,0,0,40,,,,,N,0,1b,2,Y,,,,,,,,,Solid,Solid,Solid,Solid,Y,2,1,N,,,10/06/98,02/10/1998,3.00,LC,1,1,--,,,
+716,13106-99,b2,21/06/99,,2a,2,0,0,42,,,,,N,0,1b,2,Y,,,,,,,,,Lepidic,Lepidic,Lepidic,Lepidic,Y,2,1,Y,,,21/06/99,Alive,,,0,0,-0.2,,,
+718,13676-99,b1,28/06/99,,3,3,0,0,74,,,,,N,0,2b,4,Y,,,,,,,,,Acinar,Solid,Solid,Acinar/solid,Y,2,2,N,,,28/06/99,16/08/2000,13.00,LC,1,1,1.2,,,
+720,14267-97,1a,10/07/97,,2a,2,0,0,49,,,,,N,0,1b,2,Y,,,,,,,,,Acinar,Acinar,Acinar,Acinar,Y,2,2,Y,,,10/07/97,10/10/2002,63.00,LC,1,0,1,,,
+721,15392-98,1b6,23/07/98,,2a,2,0,0,50,,,,,N,0,1b,2,Y,,,,,,,,,Solid,Solid,Solid,Solid,N,2,1,N,,,23/07/98,09/12/1999,16.00,LC,1,1,0.9,,,
+722,15758-98,1b2,28/07/98,,1a,1,0,0,15,,,,,N,0,1a,1,Y,,,,,,,,,Acinar/solid,Acinar/solid,Acinar/solid,Acinar/solid,N,2,2,N,,,28/07/98,09/08/2009,132.00,O,1,0,0.3,,,
+723,16384-98,c1,05/08/98,,2a,2,0,0,42,,,,,Y,1,1b,2,Y,,,,,,,,,Solid,Solid,Solid,Solid,N,2,2,N,,,05/08/98,21/12/2000,28.00,LC,1,1,1.4,,,
+724,16480-99,1c,05/08/99,,1a,1,0,0,20,,,,,N,0,1a,1,Y,,,,,,,,,Acinar,Acinar,Acinar,Acinar,N,2,2,N,,,05/08/99,05/02/2009,114.00,LC,1,0,-0.3,,,
+726,18049-99,b2,26/08/99,,1a,1,0,0,20,,,,,N,0,1a,1,Y,,,,,,,,,Acinar,Acinar,Acinar,Acinar,Y,3,3,Y,,,26/08/99,16/07/2006,82.00,O,1,0,0.6,,,
+727,18536-99,e,02/09/99,,2a,2,0,0,45,,,,,N,0,1b,2,Y,,,,,,,,,Acinar,Acinar,Acinar,Acinar,Y,3,2,Y,,,02/09/99,22/10/1999,1.00,LC,1,1,-0.4,,,
+728,19109-99,b2,09/09/99,,2a,2,0,0,28,,,,,Y,1,1b,2,Y,,,,,,,,,Acinar,Acinar,Acinar,Acinar,Y,5,2,Y,,,09/09/99,22/07/2011,142.00,O,1,0,1.1,,,
+730,20329-98,1b1,28/09/98,,1a,1,0,0,19,,,,,N,0,1a,1,Y,,,,,,,,,Acinar,Acinar,Acinar,Acinar,N,2,1,N,,,28/09/98,10/11/2014,193.00,U/K,1,0,0.6,,,
+731,20456-99,1a3,27/09/99,,3,3,0,0,115,,,,,Y,1,2b,4,Y,,,,,,,,,Acinar,Acinar,Acinar,Acinar/micropapillary,Y,4,3,Y,,,27/09/99,14/06/2000,8.00,LC,1,1,1,,,
+732,21560-97,1e,15/10/97,,3,3,0,0,30,,,,,N,0,2b,4,Y,,,Multifocal disease in lobe,,,,,,Lepidic,Lepidic,Lepidic,Acinar,Y,4,4,y,,,15/10/97,19/10/2011,168.00,LC,1,0,-1.4,,,
+733,22155-97,b2,23/10/97,,2a,2,0,0,25,,,,,Y,1,1b,2,Y,,,,,,,,,Acinar,Acinar,Acinar,Acinar,Y,4,2,Y,,,23/10/97,transferred?,,LC,1,1,0.1,,,
+734,23791-98,b1,11/11/98,,2a,2,0,0,43,,,,,Y,1,1b,2,Y,,,,,,,,,Acinar,Acinar,Acinar,Acinar,Y,4,4,Y,,,11/11/98,17/09/2000,22.00,LC,1,1,0.2,,,
+736,24972-98,1a4,25/11/98,,2a,2,0,0,35,,,,,N,0,1b,2,Y,,,,,,,,,Solid,Solid,Solid,Papillary,Y,4,4,Y,,,25/11/98,16/07/2003,55.00,LC,1,1,1,,,
+737,25003-98,1b1,26/11/98,,2b,2,0,0,58,,,,,N,0,2a,3,Y,,,,,,,,,Acinar,Acinar,Acinar,Acinar,Y,4,2,Y,,,26/11/98,28/11/2005,84.00,LC,1,0,0.9,,,
+738,25611-99,1c,01/12/99,,2a,2,0,0,40,,,,,N,0,1b,2,Y,,,Synchronous 12 mm adeno T1a N0,,,,,,Acinar,Acinar,Acinar,Acinar/micropapillary,Y,4,3,Y,,,01/12/99,26/12/1999,0.00,O,1,1,0.1,,,
+739,27289-99,1f,02/12/99,,3,3,0,0,80,,,,,Y,1,2b,4,Y,,,,,,,,,Papillary,Papillary,Acinar/papillary,Papillary,Y,4,2,Y,,,02/12/99,15/07/2013,163.00,U/K,1,0,1.3,,,
+740,861-98,1a,15/01/98,,2a,2,1,1,31,,,,,Y,1,2a,3,Y,,,,,,,,,Papillary,Papillary,Solid/Papillary,Papillary,Y,5,4,Y,,,15/01/98,22/01/2009,132.00,O,1,0,2.1,No mutation detected,No mutation,Positive
+741,1278-99,1b4,20/01/99,,2a,2,1,1,32,,,,,Y,1,2a,3,Y,,,,,,,,,Acinar,Acinar,Papillary,Acinar,Y,4,3,Y,,,20/01/99,20/03/2001,26.00,LC,1,1,1.7,Insertion,No mutation,Positive
+742,1743/97,1b5,28/01/97,,2b,2,1,1,60,,,,,N,0,2b,4,Y,,,,,,,,,Micropapillary,Micropapillary,Solid/micropapillary,Micropapillary,Y,5,3,Y,Y,Proportion of 1B3 in nodes disregarded and calculations done. Proportions listed still includes tumour in nodes,28/01/97,23/03/2004,85.00,LC,1,0,0.2,No mutation detected,No mutation,Positive
+743,2007-98,e,29/01/98,,2a,2,1,1,35,,,,,Y,1,2a,3,Y,,,,,,,,,Acinar,Acinar,Acinar,Solid,Y,3,2,Y,Yq,Node removed,29/01/98,Alive,,,0,0,0.2,,,
+744,7239-99,b2,08/04/99,,2b,2,1,1,64,,,,,N,0,2b,4,Y,,,,,,,,,Solid,Solid,Solid,Micropapillary,Y,5,3,Y,Y,separate nodule also removed,08/04/99,20/05/2000,13.00,LC,1,1,0.6,No mutation detected,G12V,Positive
+745,7950-99,1d,19/04/99,,2a,2,1,1,40,,,,,N,0,2a,3,Y,,,,,,,,,Papillary,Papillary,Papillary,Papillary,Y,4,3,N,With William,,19/04/99,24/09/2000,17.00,U/K,1,1,1.7,L861Q,No mutation,Positive
+746,8812-98,1b7,29/04/98,,2a,2,1,1,50,,,,,N,0,2a,3,Y,,,,,,,,,Solid,Solid,Solid,Solid,N,3,2,N,Y,"Nodes within larger sections not removed, makes no difference to predominant on section",29/04/98,17/10/1998,5.00,LC,1,1,0.5,No mutation detected,G12D,Negative (weakly cytoplasmic positive)
+747,10441-99,1d2,19/05/99,,2a,2,1,1,36,,,,,N,0,2a,3,Y,,,,,,,,,Solid,Solid,Acinar/solid,Solid,N,4,3,N,Y,,19/05/99,01/09/2004,63.00,LC,1,0,0.9,No mutation detected,Q61H,Positive
+748,11119-99,1b,27/05/99,,2a,2,1,1,37,,,,,N,0,2a,3,Y,,,,,,,,,Solid,Solid,Solid,Acinar,Y,2,1,Y,Y,,27/05/99,06/02/2005,68.00,LC,1,0,--,No mutation detected,G12C,Positive
+749,14628-99,b1,12/07/99,,1a,1,1,1,20,,,,,N,0,2a,3,Y,,,,,,,,,Solid,Solid,Solid,Solid,N,3,3,N,Y,,12/07/99,02/04/2000,8.00,LC,1,1,0.1,No mutation detected,no mutation,Negative
+751,19537-98,1b4,16/09/98,,2a,2,1,1,50,,,,,Y,1,2a,3,Y,,,,,,,,,Papillary,Papillary,Papillary,Papillary,Y,3,2,N,Y,Nodes removed,16/09/98,20/04/1999,7.00,LC,1,1,0,No mutation detected,G12A,Positive
+752,19566-99,1b3,14/09/99,,2a,2,1,1,25,,Moderate,,,Y,1,2a,3,Y,Left lower lobe,Exsmoker,,,,,Previous FNA,,Acinar,Acinar,Acinar,Acinar,Y,4,2,Y,Y,Tumour in nodes may be cut out therefore not represented in this calcultation,14/09/99,14/01/2002,28.00,O,1,1,-0.4,L858R,No mutation,Positive
+753,21049-98,1b1,06/10/98,,2a,2,1,1,40,,,,,N,0,2a,3,Y,,,,,,,,,Acinar,Acinar/solid,Solid,Solid,Y,4,3,Y,Y,Direct extension therefore not removed,06/10/98,04/04/2000,17.00,LC,1,1,0.6,No mutation detected,G12C,Positive
+754,21743-98,1c2,14/10/98,,2a,2,1,1,37,,,,,N,0,2a,3,Y,,,,,,,,,Micropapillary,Micropapillary,Micropapillary,Papillary,Y,4,3,Y,Y,Not removed as direct extension,14/10/98,04/01/2004,62.00,O,1,0,0.6,No mutation detected,G12C,Positive
+755,25943-99,1e,06/12/99,,2a,2,1,1,36,,,,,N,0,2a,3,Y,,,,,,,,,Acinar,Acinar,Acinar/solid,Solid,Y,5,3,Y,Y,"Not removed, does not affect calc",06/12/99,12/02/2014,170.00,U/K,1,0,1,No mutation detected,No mutation,Positive
+756,26527-99,c,13/12/99,,2a,2,1,1,39,,,,,N,0,2a,3,Y,,,,,,,,,Solid,Solid,Acinar/solid,Solid,Y,5,3,Y,Y,Node slides removed,13/12/99,27/03/2004,51.00,LC,1,1,-0.1,No mutation detected,G12V,Positive
+757,26924-97,1b1,24/12/97,,1b,1,1,1,24,,,,,N,0,2a,3,Y,,,,,,,,,Papillary,Papillary,Acinar/papillary,Acinar,Y,3,3,N,Y,"Not removed no tumour found in nodes, probably cut out.",24/12/97,01/09/2004,80.00,LC,1,0,-0.2,Exon 19 deletion,No mutation,Positive
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,
