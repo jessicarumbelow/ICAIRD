@@ -53,9 +53,9 @@ set_seed()
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--batch_size', type=int, default=32)
-parser.add_argument('--epochs', type=int, default=100)
+parser.add_argument('--epochs', type=int, default=10)
 parser.add_argument('--lr', type=float, default=0.001)
-parser.add_argument('--save_freq', default=100, type=int)
+parser.add_argument('--save_freq', default=200, type=int)
 parser.add_argument('--subset', default=100, type=float)
 parser.add_argument('--train', default=False, action='store_true')
 parser.add_argument('--test', default=False, action='store_true')
@@ -67,12 +67,10 @@ parser.add_argument('--seg_lf', default='ce_loss')
 parser.add_argument('--hipe', default=False, action='store_true')
 parser.add_argument('--augment', default=False, action='store_true')
 parser.add_argument('--lr_decay', default=False, action='store_true')
-parser.add_argument('--stats', default=False, action='store_true')
 parser.add_argument('--num_wb_img', type=int, default=12)
 parser.add_argument('--start_epoch', type=int, default=0)
 parser.add_argument('--sanity', default=False, action='store_true')
 parser.add_argument('--find_bad', default=False, action='store_true')
-parser.add_argument('--im_only', default=False, action='store_true')
 
 args = parser.parse_args()
 
@@ -88,14 +86,14 @@ params_id = wandb.run.name
 
 print(params_id, args)
 
-dim = 256
+DIM = 256
 NUM_CLASSES = 4
 
 CLASS_LIST = ['OTHER', 'CD8', 'CD3', 'CD20', 'CD8_PD1', 'CD3_PD1', 'CD20_PD1']
-SLIDES = ['L102', 'L111', 'L114', 'L135', 'L149', 'L47', 'L70', 'L722', 'L730', 'L749', 'L74', 'L93']
-
+ALL_SLIDES = ['L114', 'L135', 'L149', 'L47', 'L70', 'L722', 'L730', 'L749', 'L102', 'L111', 'L74', 'L93']
+TEST_SLIDES = ['L111', 'L74', 'L93']
 print(CLASS_LIST)
-print(SLIDES)
+print(ALL_SLIDES)
 
 
 ################################################ HELPERS
@@ -103,59 +101,6 @@ print(SLIDES)
 
 def normalise(x):
     return (x - x.min()) / max(x.max() - x.min(), 0.0001)
-
-
-def equalise(img):
-    return np.sort(img.ravel()).searchsorted(img)
-
-
-def save_im(img, name='image'):
-    img = img.cpu().numpy()[0] * 255
-    print(img.min(), img.max())
-
-    print(img.shape)
-    img = Image.fromarray(img).convert('L')
-    print(np.array(img).min(), np.array(img).max())
-    img.save(name + '.png', 'PNG', quality=100, subsampling=0)
-
-
-def get_stats(loader):
-    mean = 0
-    std = 0
-    var = 0
-    minimum = 9999999
-    maximum = 0
-    class_presence = np.zeros(len(CLASS_LIST))
-    mean_img = torch.zeros((1, dim, dim))
-
-    for i, data in enumerate(loader):
-        print(i, '/', len(loader))
-        input, target  = data
-        mean_img += input[0]
-        mean += input.mean()
-        std += input.std()
-        var += input.var()
-        maximum = max(input.max(), maximum)
-        minimum = min(input.min(), minimum)
-        class_presence += (np.array(cc) > 0).astype(float)
-
-    mean_img = normalise(mean_img)
-
-    img_name = 'mean_img'
-    save_im(mean_img, img_name)
-    wandb.log({img_name: wandb.Image(mean_img[0])})
-    mean /= len(loader.dataset)
-    std /= len(loader.dataset)
-    var /= len(loader.dataset)
-
-
-    class_presence = dict(zip(['{}_presence'.format(c) for c in CLASS_LIST], class_presence))
-
-    stats = {'minimum': minimum, 'maximum': maximum, 'mean': mean, 'std': std, 'var': var}
-    stats.update(class_presence)
-    stats['Slides'] = SLIDES
-    wandb.log(stats)
-    return stats
 
 
 def separate_masks(masks):
@@ -235,8 +180,8 @@ class lc_data(Dataset):
 
     def __init__(self, samples, augment=False):
         self.samples = samples
-        self.dim = dim
-        self.augment=augment
+        self.dim = DIM
+        self.augment = augment
         if augment:
             self.augs = list(range(0, 360, 90))
             num_augs = len(self.augs)
@@ -251,17 +196,23 @@ class lc_data(Dataset):
         target = Image.open(img.split('.tif')[0] + '-labelled.png')
         img = Image.open(img)
 
-        img = torch.Tensor(img)
-        target = torch.Tensor(target)
-        target[target > NUM_CLASSES] = target - NUM_CLASSES + 1
+        if self.augment:
+            rot = self.augs[index]
+            img = TF.rotate(img, rot)
+            target = TF.rotate(target, rot)
 
-        return img, target.long()
+        img = torch.Tensor(normalise(np.array(img)))
+        target = torch.Tensor(np.array(target))
+
+        target[target >= NUM_CLASSES] -= (NUM_CLASSES - 1)
+
+        return img.unsqueeze(0), target.long()
 
 
 ################################################ TRAINING
 
 
-def run_epochs(net, train_loader, eval_loader, num_epochs, path, save_freq=100, train=True):
+def run_epochs(net, train_loader, val_loader, num_epochs, path, save_freq=100, train=True):
     lr = args.lr
     optimizer = optim.AdamW(net.parameters(), lr=lr)
     worst = 1
@@ -287,7 +238,7 @@ def run_epochs(net, train_loader, eval_loader, num_epochs, path, save_freq=100, 
             print('Evaluating...')
             mode = 'val'
             net.eval()
-            dataloader = eval_loader
+            dataloader = val_loader
             lr = 0
 
         save_freq = max(min(save_freq, len(dataloader) - 1), 1)
@@ -297,7 +248,6 @@ def run_epochs(net, train_loader, eval_loader, num_epochs, path, save_freq=100, 
             inputs, targets = data
             inputs, targets = inputs.to(device), targets.to(device)
             outputs = net(inputs)
-
             loss = eval(args.seg_lf)(outputs, targets)
 
             if train:
@@ -322,12 +272,12 @@ def run_epochs(net, train_loader, eval_loader, num_epochs, path, save_freq=100, 
             print(scores_list)
             print(batch_scores)
 
-            results.update({'{}/avg_f1'.format(mode): (np.sum(total_scores[1:NUM_CLASSES, 2]) / NUM_CLASSES) / (i + 1)})
+            for s in range(len(scores_list)):
+                results.update({'{}/avg_{}'.format(mode, scores_list[s]): (np.sum(total_scores[:, s]) / NUM_CLASSES) / (i + 1)})
 
             for cls_num in range(NUM_CLASSES):
                 results.update(dict(zip(['{}/{}/'.format(mode, CLASS_LIST[cls_num]) + s for s in scores_list], total_scores[cls_num] / (i + 1))))
 
-            wandb.log(results)
             if (np.mean(batch_scores[:, 2]) <= worst) and args.find_bad:
                 worst = np.mean(batch_scores[:, 2])
                 print('Worst: ', worst)
@@ -347,14 +297,13 @@ def run_epochs(net, train_loader, eval_loader, num_epochs, path, save_freq=100, 
 
                 if args.hipe:
 
-                    for cls_im in range(1, NUM_CLASSES):
+                    for cls_im in range(1, NUM_CLASSES + 1):
                         hbs = []
                         for hb in range(args.batch_size):
 
-                            if cls_im in targets[hb] and (torch.sum(targets[hb] > 0) < (dim * dim) / 10):
+                            if cls_im in targets[hb]:
                                 print('HiPe for {}'.format(CLASS_LIST[cls_im]))
                                 hipe, hipe_depth, hipe_masks = hierarchical_perturbation(net, inputs[hb].unsqueeze(0).detach(), target=cls_im, batch_size=32, perturbation_type='fade')
-
                                 hbs.append(wandb.Image(hipe_depth.cpu() * (targets[hb] > 0).cpu()))
 
                             else:
@@ -362,14 +311,14 @@ def run_epochs(net, train_loader, eval_loader, num_epochs, path, save_freq=100, 
 
                         results["{}/{}/hipe".format(mode, CLASS_LIST[cls_im])] = hbs
 
-                wandb.log(results)
-
                 if train:
                     torch.save(net.state_dict(), path)
                     print('Saving model...')
                     with torch.no_grad():
-                        run_epochs(net, None, eval_loader, 1, None, train=False, save_freq=args.save_freq)
+                        run_epochs(net, None, val_loader, 1, None, train=False, save_freq=args.save_freq)
                     net.train()
+            wandb.log(results, commit=True)
+
 
     return
 
@@ -382,25 +331,20 @@ if args.subset < 1:
 
 wandb.log({'samples': len(samples)})
 
-train_size = int(0.8 * len(samples))
-val_test_size = len(samples) - train_size
-val_size = int(0.5 * val_test_size)
+trainval_samples = [s for s in samples if s.split('/')[1].split('_')[0] not in TEST_SLIDES]
 
-train_dataset = lc_data(samples[:train_size], augment=args.augment)
-val_dataset = lc_data(samples[train_size:train_size + val_size], augment=False)
-test_dataset = lc_data(samples[train_size + val_size:], augment=False)
+train_size = int(0.8 * len(trainval_samples))
 
-if args.stats:
-    all_dataset = lc_data(samples, augment=False)
-    data_loader = torch.utils.data.DataLoader(all_dataset, batch_size=1, shuffle=True, worker_init_fn=np.random.seed(0), num_workers=0)
-    stats = get_stats(data_loader)
-    print(stats)
-    exit()
+train_dataset = lc_data(trainval_samples[:train_size], augment=args.augment)
+val_dataset = lc_data(trainval_samples[train_size:], augment=False)
 
-print('{} training samples, {} validation samples, {} test samples...'.format(len(train_dataset), len(val_dataset), len(test_dataset)))
+test_samples = [s for s in samples if s.split('/')[1].split('_')[0] in TEST_SLIDES]
+test_dataset = lc_data(test_samples, augment=False)
+
+print('{} total samples, {} training samples, {} validation samples, {} test samples...'.format(len(samples), len(train_dataset), len(val_dataset), len(test_dataset)))
 
 train_loader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, worker_init_fn=np.random.seed(0), num_workers=0, drop_last=False)
-eval_loader = torch.utils.data.DataLoader(val_dataset, batch_size=args.batch_size, shuffle=True, worker_init_fn=np.random.seed(0), num_workers=0, drop_last=False)
+val_loader = torch.utils.data.DataLoader(val_dataset, batch_size=args.batch_size, shuffle=True, worker_init_fn=np.random.seed(0), num_workers=0, drop_last=False)
 test_loader = torch.utils.data.DataLoader(test_dataset, batch_size=args.batch_size, shuffle=True, worker_init_fn=np.random.seed(0), num_workers=0, drop_last=False)
 
 net = eval(args.model)(encoder_name=args.encoder, in_channels=1, classes=NUM_CLASSES)
@@ -420,7 +364,7 @@ wandb.watch(net)
 
 if args.train:
     print('Training network...')
-    run_epochs(net, train_loader, eval_loader, num_epochs, 'params/' + params_id + '.pth', save_freq=args.save_freq)
+    run_epochs(net, train_loader, val_loader, num_epochs, 'params/' + params_id + '.pth', save_freq=args.save_freq)
 
 elif args.test:
     with torch.no_grad():
@@ -428,7 +372,7 @@ elif args.test:
 
 else:
     with torch.no_grad():
-        run_epochs(net, None, eval_loader, 1, None, train=False, save_freq=args.save_freq)
+        run_epochs(net, None, val_loader, 1, None, train=False, save_freq=args.save_freq)
 
 run.finish()
 exit()
