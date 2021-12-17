@@ -226,7 +226,7 @@ def centroid_scores(outputs, coord_img):
 
 
 def f1_loss(o, t):
-    o = torch.softmax(o, dim=1)
+    o = F.log_softmax(o, dim=1)
     f1 = torch.zeros(1, device=device)
 
     for cls_num in range(NUM_CLASSES):
