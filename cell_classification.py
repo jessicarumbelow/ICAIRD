@@ -106,6 +106,8 @@ if args.binary_class != '':
     CLASS_LIST = ['OTHER', args.binary_class]
 elif args.combined:
     CLASS_LIST = ['OTHER', 'CD3']
+elif args.im_only:
+    CLASS_LIST = ['CD8', 'CD3']
 else:
     CLASS_LIST = ALL_CLASS_LIST
 
@@ -238,8 +240,6 @@ class custom_convnet(nn.Module):
         return x
 
 
-
-
 class cell_net(nn.Module):
 
     def __init__(self):
@@ -370,9 +370,10 @@ class cell_data(Dataset):
 
         if args.binary_class != '':
             target = 1 if cls == args.binary_class else 0
-
-        if args.combined:
+        elif args.combined:
             target = 1 if target > 0 else 0
+        elif args.im_only:
+            target -=1
 
         return img, target, id
 
@@ -540,6 +541,9 @@ else:
 
 if args.subset < 1:
     samples = samples[:int(len(samples) * args.subset)]
+
+if args.im_only:
+    samples = [s for s in samples if 'OTHER' not in s]
 
 train_samples = [s for s in samples if s.split('/')[1].split('_')[0] in TRAIN_SLIDES]
 val_samples = [s for s in samples if s.split('/')[1].split('_')[0] in VAL_SLIDES]
